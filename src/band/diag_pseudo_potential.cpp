@@ -545,7 +545,7 @@ Band::diag_pseudo_potential_davidson(Hamiltonian_k& Hk__) const
             bool converged = converged_by_relative_tol || converged_by_absolute_tol;
 
             int expand_with = std::min(num_unconverged, block_size);
-            bool should_restart = N + expand_with > num_phi || (num_lockable > 5 && num_unconverged < itso.early_restart_ * num_lockable);
+            bool should_restart = N + expand_with > num_phi || (itso.locking_ && num_lockable > 5 && num_unconverged > 5 && num_unconverged < itso.early_restart_ * num_lockable);
 
             kp.message(3, __function_name__, "Restart = %s. Locked = %d. Converged = %d. Wanted = %d. Lockable = %d.i "
                        "Num ritz = %d. Expansion size = %d\n", should_restart ? "yes" : "no", num_locked,
