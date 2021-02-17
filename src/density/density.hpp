@@ -296,7 +296,12 @@ class Density : public Field4D
         /* get lenghts of all G shells */
         auto q = ctx_.gvec().shells_len();
         /* get form-factors for all G shells */
+<<<<<<< HEAD
         auto ff = ctx_.ps_core_ri().values(q, ctx_.comm());
+=======
+        // TODO: MPI parallelise over G-shells
+        auto ff = ctx_.ps_core_ri().values(q);
+>>>>>>> d79985b1f (hotfix for QE-sirius with missing paw_density)
         /* make rho_core(G) */
         auto v = ctx_.make_periodic_function<index_domain_t::local>(ff);
 
@@ -320,6 +325,13 @@ class Density : public Field4D
     void initial_density_pseudo();
 
     void initial_density_full_pot();
+
+    /// Hotfix for unitinialized paw density (QE/robust wfct optimizer)
+    void init_paw_density() {
+        if (unit_cell_.num_paw_atoms()) {
+            paw_density_ = paw_density(ctx_);
+        }
+    }
 
     void normalize();
 

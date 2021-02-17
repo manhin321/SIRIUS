@@ -6090,6 +6090,8 @@ void sirius_nlcg_params(void* const* handler__,
     auto& gs = get_gs(handler__);
     auto& potential = gs.potential();
     auto& density = gs.density();
+    // make sure paw_density is there, TODO: cleanup density and avoid calling this manually
+    density.init_paw_density();
 
     auto& kset = get_ks(ks_handler__);
     auto& ctx = kset.ctx();
