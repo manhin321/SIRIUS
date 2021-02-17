@@ -61,6 +61,13 @@ Band::diag_full_potential_first_variation_exact(Hamiltonian_k& Hk__) const
         kp.fv_eigen_vectors().allocate(mpd);
     }
 
+    if (ctx_.gen_evp_solver().type() == ev_solver_t::cusolver) {
+        auto& mpd = ctx_.mem_pool(memory_t::device);
+        h.allocate(mpd);
+        o.allocate(mpd);
+        kp.fv_eigen_vectors().allocate(mpd);
+    }
+
     ctx_.print_memory_usage(__FILE__, __LINE__);
 
     if (ctx_.cfg().control().verification() >= 1) {

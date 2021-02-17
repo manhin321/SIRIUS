@@ -1159,7 +1159,7 @@ class Eigensolver_scalapack : public Eigensolver
 };
 #endif
 
-#ifdef SIRIUS_MAGMA
+#if defined(SIRIUS_MAGMA) && defined(__GPU)
 class Eigensolver_magma: public Eigensolver
 {
   public:
@@ -1689,7 +1689,7 @@ class Eigensolver_cuda: public Eigensolver
         CALL_CUSOLVER(cusolverDnZhegvdx, (cusolver::cusolver_handle(), itype, jobz, range, uplo, matrix_size__,
                                          reinterpret_cast<cuDoubleComplex*>(A__.at(memory_t::device)), A__.ld(),
                                          reinterpret_cast<cuDoubleComplex*>(B__.at(memory_t::device)), B__.ld(),
-                                         vl, vu, 1, nev__, &h_meig, w.get(), reinterpret_cast<cuDoubleComplex*>(work.get()), 
+                                         vl, vu, 1, nev__, &h_meig, w.get(), reinterpret_cast<cuDoubleComplex*>(work.get()),
                                          lwork, dinfo.get()));
         acc::copyout(&info, dinfo.get(), 1);
         if (!info) {

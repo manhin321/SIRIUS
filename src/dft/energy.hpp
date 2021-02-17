@@ -249,6 +249,10 @@ double energy_potential(Density const& density, Potential const& potential);
 double total_energy(Simulation_context const& ctx, K_point_set const& kset, Density const& density,
                     Potential const& potential, double ewald_energy);
 
+std::map<std::string, double> total_energy_components(Simulation_context const& ctx, K_point_set const& kset,
+                                                      Density const& density, Potential const& potential,
+                                                      double ewald_energy);
+
 double one_electron_energy(Density const& density, Potential const& potential);
 
 } // namespace sirius

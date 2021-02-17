@@ -26,6 +26,8 @@
 #include "non_local_operator.hpp"
 #include "beta_projectors/beta_projectors.hpp"
 
+#include <iomanip> // DEBUG
+
 namespace sirius {
 
 Non_local_operator::Non_local_operator(Simulation_context const& ctx__)
@@ -37,10 +39,12 @@ Non_local_operator::Non_local_operator(Simulation_context const& ctx__)
     auto& uc            = this->ctx_.unit_cell();
     packed_mtrx_offset_ = sddk::mdarray<int, 1>(uc.num_atoms());
     packed_mtrx_size_   = 0;
+    size_ = 0;
     for (int ia = 0; ia < uc.num_atoms(); ia++) {
         int nbf                 = uc.atom(ia).mt_basis_size();
         packed_mtrx_offset_(ia) = packed_mtrx_size_;
         packed_mtrx_size_ += nbf * nbf;
+        size_ += nbf;
     }
 
     switch (pu_) {
@@ -71,7 +75,7 @@ double_complex Non_local_operator::value<double_complex>(int xi1__, int xi2__, i
 
 template <>
 void Non_local_operator::apply<double_complex>(int chunk__, int ispn_block__, Wave_functions& op_phi__, int idx0__,
-                                               int n__, Beta_projectors_base& beta__,
+                                               int n__, Beta_projectors_base& beta__, const beta_projectors_coeffs_t& coeffs__,
                                                matrix<double_complex>& beta_phi__)
 {
     PROFILE("sirius::Non_local_operator::apply");
@@ -80,7 +84,7 @@ void Non_local_operator::apply<double_complex>(int chunk__, int ispn_block__, Wa
         return;
     }
 
-    auto& beta_gk     = beta__.pw_coeffs_a();
+    auto& beta_gk     = coeffs__.pw_coeffs_a;
     int num_gkvec_loc = beta__.num_gkvec_loc();
     int nbeta         = beta__.chunk(chunk__).num_beta_;
 
@@ -113,6 +117,7 @@ void Non_local_operator::apply<double_complex>(int chunk__, int ispn_block__, Wa
             int nbf  = beta__.chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::nbf), i);
             int offs = beta__.chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::offset), i);
             int ia   = beta__.chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::ia), i);
+            // std::printf("\tlocal_atom=%d, nbf=%d, offs=%d, ia=%d\n", i, nbf, offs, ia);
 
             if (nbf) {
                 linalg(la).gemm(
@@ -157,14 +162,14 @@ void Non_local_operator::apply<double_complex>(int chunk__, int ispn_block__, Wa
 
 template <>
 void Non_local_operator::apply<double_complex>(int chunk__, int ia__, int ispn_block__, Wave_functions& op_phi__,
-                                               int idx0__, int n__, Beta_projectors_base& beta__,
-                                               matrix<double_complex>& beta_phi__)
+                                               int idx0__, int n__, Beta_projectors_base& beta__, const beta_projectors_coeffs_t& coeffs__,
+                                               sddk::matrix<double_complex>& beta_phi__)
 {
     if (is_null_) {
         return;
     }
 
-    auto& beta_gk     = beta__.pw_coeffs_a();
+    auto& beta_gk     = coeffs__.pw_coeffs_a;
     int num_gkvec_loc = beta__.num_gkvec_loc();
 
     int nbf  = beta__.chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::nbf), ia__);
@@ -221,7 +226,7 @@ void Non_local_operator::apply<double_complex>(int chunk__, int ia__, int ispn_b
 
 template <>
 void Non_local_operator::apply<double>(int chunk__, int ispn_block__, Wave_functions& op_phi__, int idx0__, int n__,
-                                       Beta_projectors_base& beta__, matrix<double>& beta_phi__)
+                                       Beta_projectors_base& beta__, const beta_projectors_coeffs_t& coeffs__, sddk::matrix<double>& beta_phi__)
 {
     PROFILE("sirius::Non_local_operator::apply");
 
@@ -229,7 +234,8 @@ void Non_local_operator::apply<double>(int chunk__, int ispn_block__, Wave_funct
         return;
     }
 
-    auto& beta_gk     = beta__.pw_coeffs_a();
+    // auto& beta_gk     = beta__.pw_coeffs_a();
+    auto& beta_gk     = coeffs__.pw_coeffs_a;
     int num_gkvec_loc = beta__.num_gkvec_loc();
     int nbeta         = beta__.chunk(chunk__).num_beta_;
 
@@ -284,7 +290,7 @@ void Non_local_operator::apply<double>(int chunk__, int ispn_block__, Wave_funct
     /* compute <G+k|beta> * O * <beta|phi> and add to op_phi */
     linalg(ctx_.blas_linalg_t())
         .gemm('N', 'N', 2 * num_gkvec_loc, n__, nbeta, &linalg_const<double>::one(),
-              reinterpret_cast<double*>(beta_gk.at(mem)), 2 * num_gkvec_loc, work.at(mem), nbeta,
+              reinterpret_cast<const double*>(beta_gk.at(mem)), 2 * num_gkvec_loc, work.at(mem), nbeta,
               &linalg_const<double>::one(),
               reinterpret_cast<double*>(op_phi__.pw_coeffs(jspn).prime().at(op_phi__.preferred_memory_t(), 0, idx0__)),
               2 * op_phi__.pw_coeffs(jspn).prime().ld());
@@ -299,6 +305,143 @@ void Non_local_operator::apply<double>(int chunk__, int ispn_block__, Wave_funct
         }
     }
 }
+
+template <class T>
+void Non_local_operator::lmatmul(sddk::matrix<T>& out, const sddk::matrix<T>& B__, int ispn_block__, memory_t mem_t, identity_t<T> alpha, identity_t<T> beta) const
+{
+    /* Computes Cᵢⱼ =∑ₖ Bᵢₖ Qₖⱼ = Bᵢⱼ Qⱼⱼ
+     * Note that Q is block-diagonal. */
+    auto& uc = this->ctx_.unit_cell();
+    std::vector<int> offsets(uc.num_atoms() + 1, 0);
+    for (int ia = 0; ia < uc.num_atoms(); ++ia) {
+        offsets[ia + 1] = offsets[ia] + uc.atom(ia).mt_basis_size();
+    }
+
+    // check size
+    assert(out.size(0) == B__.size(0) && static_cast<int>(out.size(1)) == this->size_);
+    assert(B__.size(1) == this->size_);
+
+    int num_atoms = uc.num_atoms();
+
+    sddk::linalg_t la;
+    if (is_host_memory(mem_t)) {
+        la = sddk::linalg_t::blas;
+    } else if (is_device_memory(mem_t)){
+        la = sddk::linalg_t::gpublas;
+    } else {
+        TERMINATE("invalid blas backend");
+    }
+
+    for (int ja = 0; ja < num_atoms; ++ja) {
+        int offset_ja            = offsets[ja];
+        int size_ja              = offsets[ja + 1] - offsets[ja];
+        // std::printf("\tlmatmul: nbf=%d, offs=%d, ia=%d\n", size_ja, offset_ja, ja);
+        const T* Bs = B__.at(mem_t, 0, offset_ja);
+        // Qjj
+        const T* Qs = reinterpret_cast<const T*>(
+            op_.at(mem_t, 0, packed_mtrx_offset_(ja), ispn_block__));
+        T* C = out.at(mem_t, 0, offset_ja);
+        int nbf           = size_ja;
+        // compute Bij * Qjj
+        linalg(la).gemm('N', 'N', B__.size(0), size_ja, size_ja, &alpha, Bs,
+                                  B__.ld(), Qs, nbf, &beta, C, out.ld());
+        }
+}
+
+template <class T>
+void
+Non_local_operator::rmatmul(sddk::matrix<T>& out, const sddk::matrix<T>& B__, int ispn_block__, memory_t mem_t, identity_t<T> alpha, identity_t<T> beta) const
+{
+    /* Computes Cᵢⱼ =  ∑ₖ Qᵢₖ * Bₖⱼ = Qᵢᵢ * Bᵢⱼ
+     * Note that Q is block-diagonal. */
+    auto& uc = this->ctx_.unit_cell();
+    std::vector<int> offsets(uc.num_atoms() + 1, 0);
+    for (int ia = 0; ia < uc.num_atoms(); ++ia) {
+        offsets[ia + 1] = offsets[ia] + uc.atom(ia).mt_basis_size();
+    }
+    // check size
+    assert(static_cast<int>(out.size(0)) == this->size_ && out.size(1) == B__.size(1));
+    assert(B__.size(0) == this->size_);
+
+    int num_atoms = uc.num_atoms();
+
+    sddk::linalg_t la;
+    if (is_host_memory(mem_t)) {
+        la = sddk::linalg_t::blas;
+    } else if (is_device_memory(mem_t)) {
+        la = sddk::linalg_t::gpublas;
+    } else {
+        TERMINATE("invalid blas backend");
+    }
+
+    for (int ia = 0; ia < num_atoms; ++ia) {
+        int offset_ia = offsets[ia];
+        int size_ia   = offsets[ia + 1] - offsets[ia];
+        const T* Bs = B__.at(mem_t, offset_ia, 0);
+        // Qii
+        const T* Qs = reinterpret_cast<const T*>(
+            op_.at(mem_t, 0, packed_mtrx_offset_(ia), ispn_block__));
+        T* C = out.at(mem_t, offset_ia, 0);
+        // compute Qii * Bij
+        linalg(la).gemm('N', 'N', size_ia, B__.size(1), size_ia, &alpha,
+                              Qs, size_ia, Bs, B__.ld(), &beta, C, out.ld());
+    }
+}
+
+int Non_local_operator::size(int i) const
+{
+    if (i == 0 || i == 1) {
+        return this->size_;
+    }
+    throw std::runtime_error("invalid dimension");
+}
+
+template<>
+sddk::matrix<double_complex>
+Non_local_operator::get_matrix(int ispn, memory_t mem) const
+{
+    auto& uc = ctx_.unit_cell();
+    std::vector<int> offsets(uc.num_atoms() + 1, 0);
+    for (int ia = 0; ia < uc.num_atoms(); ++ia) {
+        offsets[ia + 1] = offsets[ia] + uc.atom(ia).mt_basis_size();
+    }
+
+    sddk::matrix<double_complex> O(this->size(0), this->size(1), mem);
+    O.zero(mem);
+    int num_atoms = uc.num_atoms();
+    for(int ia=0; ia < num_atoms; ++ia) {
+        int offset = offsets[ia];
+        int lsize = offsets[ia+1] - offsets[ia];
+        if(mem == memory_t::device) {
+            double_complex* out_ptr = O.at(memory_t::device, offset, offset);
+            const double_complex* op_ptr = reinterpret_cast<const double_complex*>(op_.at(memory_t::device, 0, packed_mtrx_offset_(ia), ispn));
+            // copy column by column
+            for (int col = 0; col < lsize; ++col) {
+                acc::copy(out_ptr + col * O.ld(), op_ptr + col * lsize, lsize);
+            }
+        } else if( mem == memory_t::host) {
+            double_complex* out_ptr = O.at(memory_t::host, offset, offset);
+            const double_complex* op_ptr = reinterpret_cast<const double_complex*>(op_.at(memory_t::host, 0, packed_mtrx_offset_(ia), ispn));
+            // copy column by column
+            for (int col = 0; col < lsize; ++col) {
+                std::copy(op_ptr + col * lsize, op_ptr + col * lsize + lsize, out_ptr + col * O.ld());
+            }
+        } else {
+            throw std::runtime_error("invalid memory type.");
+        }
+    }
+    return O;
+}
+
+template void Non_local_operator::rmatmul(sddk::matrix<double_complex>&, const sddk::matrix<double_complex>&, int, memory_t,
+                                          double_complex, double_complex) const;
+
+template void Non_local_operator::rmatmul(sddk::matrix<double>&, const sddk::matrix<double>&, int, memory_t, double,
+                                          double) const;
+
+template void Non_local_operator::lmatmul(sddk::matrix<double_complex>&, const sddk::matrix<double_complex>&, int, memory_t, double_complex, double_complex) const;
+
+template void Non_local_operator::lmatmul(sddk::matrix<double>&, const sddk::matrix<double>&, int, memory_t, double, double) const;
 
 D_operator::D_operator(Simulation_context const& ctx_)
     : Non_local_operator(ctx_)
@@ -601,32 +744,35 @@ void Q_operator::initialize()
 
 template <typename T>
 void
-apply_non_local_d_q(spin_range spins__, int N__, int n__, Beta_projectors& beta__, Wave_functions& phi__,
+apply_non_local_d_q(spin_range spins__, int N__, int n__, Beta_projectors& beta__, beta_projectors_coeffs_t& beta_coeffs__, Wave_functions& phi__,
                     D_operator* d_op__, Wave_functions* hphi__, Q_operator* q_op__, Wave_functions* sphi__)
 {
-
+    auto generator = beta__.make_generator();
     for (int i = 0; i < beta__.num_chunks(); i++) {
         /* generate beta-projectors for a block of atoms */
-        beta__.generate(i);
+        generator.generate(beta_coeffs__, i);
+
+        auto& ctx = beta__.ctx();
 
         for (int ispn : spins__) {
-            auto beta_phi = beta__.inner<T>(i, phi__, ispn, N__, n__);
-
+            // auto beta_phi = beta__.inner<T>(i, phi__, ispn, N__, n__);
+            auto beta_phi = inner<T>(ctx.blas_linalg_t(), ctx.processing_unit(), ctx.preferred_memory_t(), ctx.mem_pool(device_t::CPU),
+                                     beta_coeffs__, phi__, ispn, N__, n__);
             if (hphi__ && d_op__) {
                 /* apply diagonal spin blocks */
-                d_op__->apply(i, ispn, *hphi__, N__, n__, beta__, beta_phi);
+                d_op__->apply(i, ispn, *hphi__, N__, n__, beta__, beta_coeffs__, beta_phi);
                 if (!d_op__->is_diag() && hphi__->num_sc() == 2) {
                     /* apply non-diagonal spin blocks */
                     /* xor 3 operator will map 0 to 3 and 1 to 2 */
-                    d_op__->apply(i, ispn ^ 3, *hphi__, N__, n__, beta__, beta_phi);
+                    d_op__->apply(i, ispn ^ 3, *hphi__, N__, n__, beta__, beta_coeffs__, beta_phi);
                 }
             }
 
             if (sphi__ && q_op__) {
                 /* apply Q operator (diagonal in spin) */
-                q_op__->apply(i, ispn, *sphi__, N__, n__, beta__, beta_phi);
+                q_op__->apply(i, ispn, *sphi__, N__, n__, beta__, beta_coeffs__, beta_phi);
                 if (!q_op__->is_diag() && sphi__->num_sc() == 2) {
-                    q_op__->apply(i, ispn ^ 3, *sphi__, N__, n__, beta__, beta_phi);
+                    q_op__->apply(i, ispn ^ 3, *sphi__, N__, n__, beta__, beta_coeffs__, beta_phi);
                 }
             }
         }
@@ -644,19 +790,21 @@ apply_S_operator(device_t pu__, spin_range spins__, int N__, int n__, Beta_proje
     }
 
     if (q_op__) {
-        apply_non_local_d_q<T>(spins__, N__, n__, beta__, phi__, nullptr, nullptr, q_op__, &sphi__);
+        auto beta_coeffs = beta__.prepare();
+        apply_non_local_d_q<T>(spins__, N__, n__, beta__, beta_coeffs, phi__, nullptr, nullptr, q_op__, &sphi__);
+        // beta__.dismiss();
     }
 }
 
 template
 void
-apply_non_local_d_q<double>(spin_range spins__, int N__, int n__, Beta_projectors& beta__,
+apply_non_local_d_q<double>(spin_range spins__, int N__, int n__, Beta_projectors& beta__, beta_projectors_coeffs_t&,
                             Wave_functions& phi__, D_operator* d_op__, Wave_functions* hphi__,
                             Q_operator* q_op__, Wave_functions* sphi__);
 
 template
 void
-apply_non_local_d_q<double_complex>(spin_range spins__, int N__, int n__, Beta_projectors& beta__,
+apply_non_local_d_q<double_complex>(spin_range spins__, int N__, int n__, Beta_projectors& beta__, beta_projectors_coeffs_t&,
                                     Wave_functions& phi__, D_operator* d_op__, Wave_functions* hphi__,
                                     Q_operator* q_op__, Wave_functions* sphi__);
 

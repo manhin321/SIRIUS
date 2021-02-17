@@ -811,18 +811,24 @@ void Density::add_k_point_contribution_dm(K_point* kp__, sddk::mdarray<double_co
             return;
         }
 
-        kp__->beta_projectors().prepare();
+        auto beta_coeffs = kp__->beta_projectors().prepare();
+        auto gen = kp__->beta_projectors().make_generator();
+
+        auto linalg_t        = ctx_.blas_linalg_t();
+        auto processing_unit = ctx_.processing_unit();
+        auto preferred_memory = ctx_.preferred_memory_t();
+        auto& host_mempool   = ctx_.mem_pool(memory_t::host);
 
         if (ctx_.num_mag_dims() != 3) {
             for (int chunk = 0; chunk < kp__->beta_projectors().num_chunks(); chunk++) {
-                kp__->beta_projectors().generate(chunk);
 
+                gen.generate(beta_coeffs, chunk);
                 for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
                     /* total number of occupied bands for this spin */
                     int nbnd = kp__->num_occupied_bands(ispn);
                     /* compute <beta|psi> */
-                    auto beta_psi =
-                        kp__->beta_projectors().inner<T>(chunk, kp__->spinor_wave_functions(), ispn, 0, nbnd);
+                    auto beta_psi = inner<T>(linalg_t, processing_unit, preferred_memory, host_mempool, beta_coeffs, kp__->spinor_wave_functions(),
+                                             ispn, 0, nbnd);
 
                     /* number of beta projectors */
                     int nbeta = kp__->beta_projectors().chunk(chunk).num_beta_;
@@ -867,11 +873,10 @@ void Density::add_k_point_contribution_dm(K_point* kp__, sddk::mdarray<double_co
             }
         } else {
             for (int chunk = 0; chunk < kp__->beta_projectors().num_chunks(); chunk++) {
-                kp__->beta_projectors().generate(chunk);
+                gen.generate(beta_coeffs, chunk);
 
+                int nbeta = beta_coeffs.beta_chunk.num_beta_;
                 /* number of beta projectors */
-                int nbeta = kp__->beta_projectors().chunk(chunk).num_beta_;
-
                 /* total number of occupied bands */
                 int nbnd = kp__->num_occupied_bands();
 
@@ -884,9 +889,12 @@ void Density::add_k_point_contribution_dm(K_point* kp__, sddk::mdarray<double_co
 
                 for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
                     /* compute <beta|psi> */
-                    auto beta_psi =
-                        kp__->beta_projectors().inner<T>(chunk, kp__->spinor_wave_functions(), ispn, 0, nbnd);
-                    #pragma omp parallel for schedule(static)
+                    // auto beta_psi =
+                    //     kp__->beta_projectors().inner<T>(chunk, kp__->spinor_wave_functions(), ispn, 0, nbnd);
+                    auto beta_psi = inner<T>(linalg_t, processing_unit, preferred_memory, host_mempool, beta_coeffs,
+                                             kp__->spinor_wave_functions(), ispn, 0, nbnd);
+
+#pragma omp parallel for schedule(static)
                     for (int i = 0; i < nbnd_loc; i++) {
                         int j = spl_nbnd[i];
 
@@ -990,7 +998,7 @@ void Density::add_k_point_contribution_dm(K_point* kp__, sddk::mdarray<double_co
                 }
             }
         }
-        kp__->beta_projectors().dismiss();
+        // kp__->beta_projectors().dismiss();
     }
 }
 

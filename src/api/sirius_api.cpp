@@ -31,6 +31,8 @@
 #ifdef SIRIUS_NLCGLIB
 #include "nlcglib/adaptor.hpp"
 #include "nlcglib/nlcglib.hpp"
+#include "nlcglib/overlap.hpp"
+#include "nlcglib/ultrasoft_precond.hpp"
 #endif
 
 static inline void sirius_exit(int error_code__, std::string msg__ = "")
@@ -6117,20 +6119,55 @@ void sirius_nlcg_params(void* const* handler__,
 
     nlcglib::nlcg_info info;
 
+    bool is_ultrasoft = false;
+    for (int at = 0; at < ctx.unit_cell().num_atom_types(); ++at) {
+        if (ctx.unit_cell().atom_type(at).augment()) {
+            is_ultrasoft = true;
+        }
+    }
+
+    sirius::Hamiltonian0 H0(potential);
+
+    using numeric_t = std::complex<double>;
+
     sirius::Energy energy(kset, density, potential);
     if (is_device_memory(ctx.preferred_memory_t())) {
         if (pu.empty() || pu.compare("gpu") == 0) {
-            info = nlcglib::nlcg_mvp2_device(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            if(is_ultrasoft) {
+                sirius::UltrasoftPrecond us_precond(kset, ctx, H0.Q());
+                sirius::Overlap_operators<sirius::S_k<numeric_t>> S(kset, ctx, H0.Q());
+                info = nlcglib::nlcg_us_device(energy, us_precond, S, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            } else {
+                info = nlcglib::nlcg_mvp2_device(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            }
         } else if (pu.compare("cpu") == 0) {
-            info = nlcglib::nlcg_mvp2_device_cpu(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            if(is_ultrasoft) {
+                sirius::UltrasoftPrecond us_precond(kset, ctx, H0.Q());
+                sirius::Overlap_operators<sirius::S_k<numeric_t>> S(kset, ctx, H0.Q());
+                info = nlcglib::nlcg_us_device_cpu(energy, us_precond, S, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            } else {
+                info = nlcglib::nlcg_mvp2_device_cpu(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            }
         } else {
             throw std::runtime_error("invalid processing unit for nlcg given: " + pu);
         }
     } else {
         if (pu.empty() || pu.compare("cpu") == 0) {
-            info = nlcglib::nlcg_mvp2_cpu(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            if (is_ultrasoft) {
+                sirius::UltrasoftPrecond us_precond(kset, ctx, H0.Q());
+                sirius::Overlap_operators<sirius::S_k<numeric_t>> S(kset, ctx, H0.Q());
+                info = nlcglib::nlcg_us_cpu(energy, us_precond, S, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            } else {
+                info = nlcglib::nlcg_mvp2_cpu(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            }
         } else if (pu.compare("gpu") == 0) {
-            info = nlcglib::nlcg_mvp2_cpu_device(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            if (is_ultrasoft) {
+                sirius::UltrasoftPrecond us_precond(kset, ctx, H0.Q());
+                sirius::Overlap_operators<sirius::S_k<numeric_t>> S(kset, ctx, H0.Q());
+                info = nlcglib::nlcg_us_cpu_device(energy, us_precond, S, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            } else {
+                info = nlcglib::nlcg_mvp2_cpu_device(energy, smearing_t, temp, tol, kappa, tau, maxiter, restart);
+            }
         } else {
             throw std::runtime_error("invalid processing unit for nlcg given: " + pu);
         }

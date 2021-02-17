@@ -35,6 +35,8 @@
 #include <array>
 #include <complex>
 #include <cassert>
+#include <type_traits>
+#include <utility>
 #include "gpu/acc.hpp"
 
 namespace sddk {
@@ -1285,6 +1287,44 @@ class mdarray
         return raw_ptr_[idx(args...)];
     }
 
+
+    /// @addtogroup raw pointers
+    /// @{
+    T* host_data()
+    {
+        assert(raw_ptr_ != nullptr);
+        return raw_ptr_;
+    }
+
+    const T* host_data() const
+    {
+        assert(raw_ptr_ != nullptr);
+        return raw_ptr_;
+    }
+
+    T* device_data()
+    {
+#if defined(__GPU)
+        assert(raw_ptr_device_ != nullptr);
+        return raw_ptr_device_;
+#else
+        // static_assert(false, "not compiled with GPU support");
+        throw std::runtime_error("not compiled with GPU support");
+#endif
+    }
+
+    const T* device_data() const
+    {
+#if defined(__GPU)
+        assert(raw_ptr_device_ != nullptr);
+        return raw_ptr_device_;
+#else
+        // static_assert(false, "not compiled with GPU support");
+        throw std::runtime_error("not compiled with GPU support");
+#endif
+    }
+    /// @}
+
     /// Access operator() for the elements of multidimensional array.
     template <typename... Args>
     inline T& operator()(Args... args)
@@ -1510,6 +1550,11 @@ class mdarray
 #endif
     }
 
+    inline bool on_host() const
+    {
+        return (raw_ptr_ != nullptr);
+    }
+
     mdarray<T, N>& operator=(std::function<T(void)> f__)
     {
         for (size_t i = 0; i < this->size(); i++) {
@@ -1547,7 +1592,8 @@ using matrix = mdarray<T, 2>;
 
 /// Serialize to std::ostream
 template <typename T, int N>
-std::ostream& operator<<(std::ostream& out, mdarray<T, N>& v)
+std::ostream&
+operator<<(std::ostream& out, mdarray<T, N>& v)
 {
     if (v.size()) {
         out << v[0];
@@ -1558,22 +1604,93 @@ std::ostream& operator<<(std::ostream& out, mdarray<T, N>& v)
     return out;
 }
 
+/// Copy memory specified by device from src to dst.
 template <typename T, int N>
-inline void copy(mdarray<T, N> const& src__, mdarray<T, N>& dest__)
+void
+copy(mdarray<T, N>& dst, mdarray<T, N>& src, device_t device)
 {
-    if (src__.size() == 0) {
-        return;
+    // TODO add also check shapes
+    assert(src.size() == dst.size());
+    if (device == device_t::GPU) {
+        assert(src.on_device() && dst.on_device());
+        acc::copy(dst.device_data(), src.device_data(), dst.size());
+    } else if(device == device_t::CPU) {
+        assert(src.on_host() && dst.on_host());
+        std::copy(src.host_data(), src.host_data() + dst.size(), dst.host_data());
     }
-    for (int i = 0; i < N; i++) {
-        if (dest__.dim(i).begin() != src__.dim(i).begin() || dest__.dim(i).end() != src__.dim(i).end()) {
-            std::stringstream s;
-            s << "error at line " << __LINE__ << " of file " << __FILE__ << " : array dimensions don't match";
-            throw std::runtime_error(s.str());
-        }
-    }
-    std::copy(&src__[0], &src__[0] + src__.size(), &dest__[0]);
 }
 
+// TODO: this is using different arguments, check where it is used and swap them
+// template <typename T, int N>
+// inline void copy(mdarray<T, N> const& src__, mdarray<T, N>& dest__)
+// {
+//   if (src__.size() == 0) {
+//     return;
+//   }
+//   for (int i = 0; i < N; i++) {
+//     if (dest__.dim(i).begin() != src__.dim(i).begin() || dest__.dim(i).end() != src__.dim(i).end()) {
+//       std::stringstream s;
+//       s << "error at line " << __LINE__ << " of file " << __FILE__ << " : array dimensions don't match";
+//       throw std::runtime_error(s.str());
+//     }
+//   }
+//   std::copy(&src__[0], &src__[0] + src__.size(), &dest__[0]);
+// }
+
+/// Copy all memory present on destination.
+template <typename T, int N>
+void
+copy(mdarray<T, N>& dst, const mdarray<T, N>& src)
+{
+
+    assert(dst.size() == src.size());
+    // TODO: make sure dst and src don't overlap
+
+    if (dst.on_device()) {
+        acc::copy(dst.device_data(), src.device_data(), src.size());
+    }
+
+    if (dst.on_host()) {
+        std::copy(src.host_data(), src.host_data() + dst.size(), dst.host_data());
+    }
 }
+
+template <class numeric_t, std::size_t... Ts>
+auto
+_empty_like_inner(std::index_sequence<Ts...>& seq, std::size_t (&dims)[sizeof...(Ts)], memory_pool* mempool)
+{
+    if (mempool == nullptr) {
+        return mdarray<numeric_t, sizeof...(Ts)>{dims[Ts]...};
+    } else {
+        mdarray<numeric_t, sizeof...(Ts)> out{dims[Ts]...};
+        out.allocate(*mempool);
+        return out;
+    }
+}
+
+template<typename T, int N>
+auto empty_like(const mdarray<T, N>& src)
+{
+    auto I = std::make_index_sequence<N>{};
+    std::size_t dims[N];
+    for (int i = 0; i < N; ++i) {
+        dims[i] = src.size(i);
+    }
+    return _empty_like_inner<T>(I, dims, nullptr);
+}
+
+template <typename T, int N>
+auto
+empty_like(const mdarray<T, N>& src, memory_pool& mempool)
+{
+    auto I = std::make_index_sequence<N>{};
+    std::size_t dims[N];
+    for (int i = 0; i < N; ++i) {
+        dims[i] = src.size(i);
+    }
+    return _empty_like_inner<T>(I, dims, &mempool);
+}
+
+} // namespace sddk
 
 #endif  // __MEMORY_HPP__

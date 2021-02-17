@@ -121,6 +121,7 @@ def einsum(expr, *operands):
 
 class CoefficientArray:
     """CoefficientArray class."""
+
     def __init__(self, dtype=np.complex, ctype=np.matrix):
         """
         dtype -- number type
@@ -495,7 +496,7 @@ class PwCoeffs(CoefficientArray):
                 k = kpointset[ki]
                 for ispn in range(num_sc):
                     key = ki, ispn
-                    val = np.matrix(k.spinor_wave_functions().pw_coeffs(ispn))
+                    val = np.matrix(np.array(k.spinor_wave_functions().pw_coeffs(ispn), order='F', copy=True), copy=False)
                     self.__setitem__(key, val)
 
     def __setitem__(self, key, item):

@@ -217,6 +217,17 @@ inline auto ztrmm(ARGS&&... args) -> status_t {
 }
 
 template <typename... ARGS>
+inline auto
+zhbmv(ARGS&&... args) -> status_t
+{
+#if defined(__ROCM)
+    return rocblas_zhbmv(std::forward<ARGS>(args)...);
+#else
+    return cublasZhbmv(std::forward<ARGS>(args)...);
+#endif // __ROCM
+}
+
+template <typename... ARGS>
 inline auto dger(ARGS&&... args) -> status_t {
 #if defined(SIRIUS_ROCM)
   return rocblas_dger(std::forward<ARGS>(args)...);

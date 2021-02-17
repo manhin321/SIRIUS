@@ -61,4 +61,5 @@ class FreeEnergy:
         self.energy.kpointset.fn = fn
         E, HX = self.energy.compute(cn)
         entropy = self.smearing.entropy(fn)
+        print('entropy: ', entropy)
         return E + entropy, HX

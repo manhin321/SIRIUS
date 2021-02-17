@@ -7,7 +7,8 @@ import numpy as np
 from scipy.constants import physical_constants
 
 from ..coefficient_array import CoefficientArray as ca
-from ..coefficient_array import diag, einsum, inner
+from ..coefficient_array import diag, einsum, inner, l2norm
+from ..operators import US_Precond, Sinv_operator, S_operator
 
 from ..helpers import save_state
 from ..logger import Logger
@@ -157,7 +158,7 @@ class F:
     Evaluate free energy along a fixed direction.
     """
 
-    def __init__(self, X, eta, M, G_X, G_eta):
+    def __init__(self, X, eta, M, G_X, G_eta, overlap):
         """
         Keyword Arguments:
         X     -- plane-wave coefficients
@@ -173,6 +174,7 @@ class F:
         # search direction
         self.G_X = G_X
         self.G_eta = G_eta
+        self.overlap = overlap
 
     def __call__(self, t):
         """
@@ -188,7 +190,7 @@ class F:
         X_new = self.X + t * self.G_X
         eta_new = self.eta + t * self.G_eta
         ek, Ul = eta_new.eigh()
-        X = loewdin(X_new) @ Ul
+        X = loewdin(X_new, self.overlap) @ Ul
         fn, mu = self.M.smearing.fn(ek)
 
         # check fn
@@ -251,6 +253,18 @@ class CG:
         self.M = free_energy
         self._save = False
 
+        # ultrasoft
+        potential = self.M.energy.potential
+        kset = self.M.energy.kpointset
+        ctx = kset.ctx()
+        self.is_ultrasoft = np.any([type.augment for type in kset.ctx().unit_cell().atom_types])
+        if self.is_ultrasoft:
+            self.Si = Sinv_operator(ctx, potential, kset)
+            self.S = S_operator(ctx, potential, kset)
+            self.K = US_Precond(ctx, potential, kset)
+        else:
+            self.S = None
+
     def step(self, X, f, eta, G_X, G_eta, xi_trial, F0, slope, kwargs):
         """
         Keyword Arguments:
@@ -273,7 +287,7 @@ class CG:
         """
 
         # TODO: refactor
-        fline = F(X, eta, self.M, G_X, G_eta)
+        fline = F(X, eta, self.M, G_X, G_eta, self.S)
         while True:
             # free energy at trial point
             F1, _, _, _, _, _ = fline(xi_trial)
@@ -392,6 +406,10 @@ class CG:
         else:
             raise ValueError('wrong type')
 
+        if self.is_ultrasoft:
+            K = self.K
+            # TODO cleanup signature of run and don't pass the preconditioner anymore
+
         kset = self.M.energy.kpointset
         # occupation prec
         kappa0 = kappa
@@ -402,8 +420,6 @@ class CG:
         m = kset.ctx().max_occupancy()
         # set occupation numbers from band energies
         fn = kset.fn
-        # ek = self.M.smearing.ek(fn)
-
         eta = diag(self.M.smearing.ek(fn))
         w, U = eta.eigh()
         ek = w
@@ -415,14 +431,21 @@ class CG:
         HX = Hx * kw
         Hij = X.H @ HX
         g_eta = grad_eta(Hij, ek, fn, T, kw, mo=m)
-        XhKHXF = X.H @ (K @ HX)
-        XhKX = X.H @ (K @ X)
-        LL = _solve(XhKX, XhKHXF)
-        g_X = (HX*fn - X@LL)
-        # check that constraints are fulfilled
-        delta_X = -K * (HX - X @ LL) / kw
 
-        g_X = (HX*fn - X@LL)
+        # Lagrange multipliers
+        if self.is_ultrasoft:
+            SX = self.S @ X
+        else:
+            SX = X
+        XhKHX = SX.H @ (K @ HX)
+        XhKX = SX.H @ (K @ SX)
+        LL = _solve(XhKX, XhKHX)
+
+        g_X = (HX*fn - SX@LL)
+        # check that constraints are fulfilled
+        delta_X = -(K @ (HX - SX @ LL) / kw)
+
+        g_X = (HX*fn - SX@LL)
         G_X = delta_X
 
         G_eta = -kappa*g_eta
@@ -453,7 +476,7 @@ class CG:
                     # side effects
                     try:
                         error_callback(g_X=g_X, G_X=G_X, g_eta=g_eta, G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, prefix='nlcg_dump%04d_' % ii)
-                        Fline = F(X, eta, M, G_X, G_eta)
+                        Fline = F(X, eta, M, G_X, G_eta, self.S)
                         logger('btsearch')
                         X, fn, ek, FE, Hx, U, tmin = self.backtracking_search(X, fn, eta, Fline, FE, tau=tau,
                                                                               error_callback=error_callback)
@@ -484,14 +507,20 @@ class CG:
             gp_eta = U.H @ g_eta @ U
             g_eta = grad_eta(Hij, ek, fn, T, kw, mo=m)
             # Lagrange multipliers
-            XhKHXF = X.H @ (K @ HX)
-            XhKX = X.H @ (K @ X)
-            LL = _solve(XhKX, XhKHXF)
+            if self.is_ultrasoft:
+                SX = self.S @ X
+            else:
+                SX = X
+            XhKHX = SX.H @ (K @ HX)
+            XhKX = SX.H @ (K @ SX)
+            LL = _solve(XhKX, XhKHX)
+
             gp_X = g_X@U
-            g_X = (HX*fn - X@LL)
+            g_X = (HX*fn - SX@LL)
             # check that constraints are fulfilled
-            delta_X = -K * (HX - X @ LL) / kw
-            # assert l2norm(X.H @ delta_X) < 1e-11
+            delta_X = -(K @ (HX - SX @ LL) / kw)
+            # check orthogonality constraint
+            assert l2norm(SX.H @ delta_X) < 1e-11
             delta_eta = kappa * (Hij - kw*diag(ek)) / kw
             # update kappa
             # dFdk = inner(g_eta, deltaP_eta) * tmin / kappa
@@ -511,7 +540,13 @@ class CG:
                 logger('restart CG')
                 gamma = 0
             logger('gamma: ', gamma)
-            G_X = delta_X + gamma * (GP_X - X@(X.H@GP_X))
+            if self.is_ultrasoft:
+                gLL = _solve(X.H @ (self.S @ SX), X.H @ (self.S @ GP_X))
+                G_X = delta_X + gamma * (GP_X - SX@gLL)
+            else:
+                gLL = X.H@GP_X
+                G_X = delta_X + gamma * (GP_X - X@gLL)
+
             G_eta = delta_eta + gamma * GP_eta
             tcgstop = time.time()
             logger('\tcg step took: ', format(tcgstop-tcgstart, '.3f'), ' seconds')

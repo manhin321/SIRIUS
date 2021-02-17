@@ -26,6 +26,8 @@
 #define __NON_LOCAL_OPERATOR_HPP__
 
 #include "SDDK/memory.hpp"
+#include "traits.hpp"
+#include "beta_projectors/beta_projectors_base.hpp"
 
 namespace sddk {
 class Wave_functions;
@@ -37,6 +39,7 @@ namespace sirius {
 class Beta_projectors;
 class Beta_projectors_base;
 class Simulation_context;
+// class beta_chunk_t; // not needed, beta_chunk_t was previously declared
 
 /// Non-local part of the Hamiltonian and S-operator in the pseudopotential method.
 class Non_local_operator
@@ -47,6 +50,8 @@ class Non_local_operator
     sddk::device_t pu_;
 
     int packed_mtrx_size_;
+
+    int size_;
 
     sddk::mdarray<int, 1> packed_mtrx_offset_;
 
@@ -70,12 +75,20 @@ class Non_local_operator
     /// Apply chunk of beta-projectors to all wave functions.
     template <typename T>
     void apply(int chunk__, int ispn_block__, sddk::Wave_functions& op_phi__, int idx0__, int n__,
-               Beta_projectors_base& beta__, sddk::matrix<T>& beta_phi__);
+               Beta_projectors_base& beta__, const beta_projectors_coeffs_t& coeffs, sddk::matrix<T>& beta_phi__);
 
     /// Apply beta projectors from one atom in a chunk of beta projectors to all wave-functions.
     template <typename T>
     void apply(int chunk__, int ia__, int ispn_block__, sddk::Wave_functions& op_phi__, int idx0__, int n__,
-               Beta_projectors_base& beta__, sddk::matrix<T>& beta_phi__);
+               Beta_projectors_base& beta__, const beta_projectors_coeffs_t& coeffs__, sddk::matrix<T>& beta_phi__);
+
+    /// computes α B*Q + β out
+    template <typename T>
+    void lmatmul(sddk::matrix<T>& out, const sddk::matrix<T>& B__, int ispn_block__, memory_t mem_t, identity_t<T> alpha = T{1}, identity_t<T> beta = T{0}) const;
+
+    /// computes α Q*B + β out
+    template <typename T>
+    void rmatmul(sddk::matrix<T>& out, const sddk::matrix<T>& B__, int ispn_block__, memory_t mem_t, identity_t<T> alpha = T{1}, identity_t<T> beta = T{0}) const;
 
     template <typename T>
     inline T value(int xi1__, int xi2__, int ia__)
@@ -86,10 +99,15 @@ class Non_local_operator
     template <typename T>
     T value(int xi1__, int xi2__, int ispn__, int ia__);
 
+    int size(int i) const;
+
     inline bool is_diag() const
     {
         return is_diag_;
     }
+
+    template <typename T>
+    sddk::matrix<T> get_matrix(int ispn, memory_t mem) const;
 };
 
 class D_operator : public Non_local_operator
@@ -157,7 +175,7 @@ class Q_operator : public Non_local_operator
  */
 template <typename T>
 void
-apply_non_local_d_q(sddk::spin_range spins__, int N__, int n__, Beta_projectors& beta__,
+apply_non_local_d_q(sddk::spin_range spins__, int N__, int n__, Beta_projectors& beta__, beta_projectors_coeffs_t& beta_coeffs__,
                     sddk::Wave_functions& phi__, D_operator* d_op__, sddk::Wave_functions* hphi__, Q_operator* q_op__,
                     sddk::Wave_functions* sphi__);
 

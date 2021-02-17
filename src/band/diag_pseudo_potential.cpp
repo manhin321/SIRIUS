@@ -160,15 +160,19 @@ Band::diag_pseudo_potential_exact(int ispn__, Hamiltonian_k& Hk__) const
 
     mdarray<double_complex, 2> btmp(kp.num_gkvec_row(), ctx_.unit_cell().max_mt_basis_size());
 
-    kp.beta_projectors_row().prepare();
-    kp.beta_projectors_col().prepare();
+    auto beta_coeffs_row = kp.beta_projectors_row().prepare();
+    auto beta_coeffs_col = kp.beta_projectors_col().prepare();
+
+    auto beta_generator = kp.beta_projectors_row().make_generator();
     for (int ichunk = 0; ichunk <  kp.beta_projectors_row().num_chunks(); ichunk++) {
         /* generate beta-projectors for a block of atoms */
-        kp.beta_projectors_row().generate(ichunk);
-        kp.beta_projectors_col().generate(ichunk);
+        beta_generator.generate(beta_coeffs_row, ichunk);
+        beta_generator.generate(beta_coeffs_col, ichunk);
+        // kp.beta_projectors_row().generate(ichunk);
+        // kp.beta_projectors_col().generate(ichunk);
 
-        auto& beta_row = kp.beta_projectors_row().pw_coeffs_a();
-        auto& beta_col = kp.beta_projectors_col().pw_coeffs_a();
+        auto& beta_row = beta_coeffs_row.pw_coeffs_a;
+        auto& beta_col = beta_coeffs_col.pw_coeffs_a;
 
         for (int i = 0; i <  kp.beta_projectors_row().chunk(ichunk).num_atoms_; i++) {
             /* number of beta functions for a given atom */
@@ -201,8 +205,8 @@ Band::diag_pseudo_potential_exact(int ispn__, Hamiltonian_k& Hk__) const
             }
         } // i (atoms in chunk)
     }
-    kp.beta_projectors_row().dismiss();
-    kp.beta_projectors_col().dismiss();
+    // kp.beta_projectors_row().dismiss();
+    // kp.beta_projectors_col().dismiss();
 
     if (ctx_.cfg().control().verification() >= 1) {
         double max_diff = check_hermitian(ovlp, kp.num_gkvec());
@@ -615,7 +619,7 @@ Band::diag_pseudo_potential_davidson(Hamiltonian_k& Hk__) const
             orthogonalize<T>(ctx_.spla_context(), ctx_.preferred_memory_t(), ctx_.blas_linalg_t(), nc_mag ? 2 : 0, phi,
                              hphi, sphi, N, expand_with, ovlp, res);
 
-            /* setup eigen-value problem. 
+            /* setup eigen-value problem.
              * N is the number of previous basis functions
              * expand_with is the number of new basis functions */
             set_subspace_mtrx(N, expand_with, num_locked, phi, hphi, hmlt, &hmlt_old);

@@ -27,6 +27,7 @@
 
 #include "blas_lapack.h"
 #include "scalapack.h"
+#include "SDDK/memory.hpp"
 
 namespace sddk {
 
@@ -78,6 +79,21 @@ enum class linalg_t
     /// SPLA library. Can take CPU and device pointers
     spla
 };
+
+inline device_t get_linalg_device_type(linalg_t linalg)
+{
+    if (linalg == linalg_t::lapack || linalg == linalg_t::scalapack || linalg == linalg_t::magma) {
+        return device_t::CPU;
+    }
+    if (linalg == linalg_t::none) {
+        // why do we have linalg_t::none?
+        return device_t::CPU;
+    }
+    if (linalg == linalg_t::cublasxt || linalg == linalg_t::gpublas) {
+        return device_t::GPU;
+    }
+    assert(false);
+}
 
 inline linalg_t get_linalg_t(std::string name__)
 {

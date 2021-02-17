@@ -173,7 +173,23 @@ double total_energy(Simulation_context const& ctx, K_point_set const& kset, Dens
     return tot_en;
 }
 
-double one_electron_energy(Density const& density, Potential const& potential)
+std::map<std::string, double>
+total_energy_components(Simulation_context const& ctx, K_point_set const& kset, Density const& density,
+                        Potential const& potential, double ewald_energy)
+{
+    std::map<std::string, double> table;
+    table["valence_eval_sum"] = kset.valence_eval_sum();
+    table["vxc"] = energy_vxc(density, potential);
+    table["bxc"] = energy_bxc(density, potential);
+    table["PAW_one_elec"] = potential.PAW_one_elec_energy();
+    table["vha"] = energy_vha(potential);
+    table["exc"] = energy_exc(density, potential);
+    table["PAW_total_energy"] = potential.PAW_total_energy();
+    table["ewald"] = ewald_energy;
+    return table;
+}
+
+    double one_electron_energy(Density const& density, Potential const& potential)
 {
     return energy_vha(potential) + energy_vxc(density, potential) + energy_bxc(density, potential) +
         potential.PAW_one_elec_energy(density);

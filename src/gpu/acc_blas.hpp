@@ -278,6 +278,14 @@ ztrmm(char side__, char uplo__, char transa__, char diag__, int m__, int n__, ac
 }
 
 inline void
+zhbmv(char uplo, int n, int k, acc_complex_double_t const* alpha, acc_complex_double_t const* a, int lda,
+      acc_complex_double_t const* x, int incx, acc_complex_double_t const* beta, acc_complex_double_t* y, int incy, int stream_id)
+{
+    auto fillmode = accblas::get_gpublasFillMode_t(uplo);
+    CALL_GPU_BLAS(::acc::blas::zhbmv, (stream_handle(stream_id), fillmode, n, k, alpha, a, lda, x, incx, beta, y, incy));
+}
+
+inline void
 dger(int m, int n, double const* alpha, double const* x, int incx, double const* y, int incy, double* A, int lda,
      int stream_id)
 {

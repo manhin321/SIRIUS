@@ -28,8 +28,9 @@
 #include <stdint.h>
 #ifdef SIRIUS_GPU
 #include "gpu/acc_blas.hpp"
+#include "gpu/acc_lapack.hpp"
 #endif
-#ifdef SIRIUS_MAGMA
+#if defined (__MAGMA) && defined(__GPU)
 #include "gpu/magma.hpp"
 #endif
 #include "blas_lapack.h"
@@ -54,6 +55,7 @@ const std::string linalg_msg_no_scalapack = "not compiled with ScaLAPACK";
 
 class linalg
 {
+
   private:
     linalg_t la_;
   public:
@@ -61,6 +63,14 @@ class linalg
         : la_(la__)
     {
     }
+
+    /*
+        BLAS Level 1
+    */
+
+    /// vector addition
+    template <typename T>
+    inline void axpy(int n, T const* alpha, T const* x, int incx, T* y, int incy);
 
     /*
         matrix - matrix multiplication
@@ -93,6 +103,11 @@ class linalg
     inline void trmm(char side, char uplo, char transa, ftn_int m, ftn_int n, T const* aplha, T const* A, ftn_int lda,
                      T* B, ftn_int ldb, stream_id sid = stream_id(-1)) const;
 
+    /// Hermitian banded matrix-vector multiplication
+    template <typename T>
+    inline void hbmv(char uplo, ftn_int n, ftn_int k, T alpha, T const* a, ftn_int lda, T const* x, ftn_int incx,
+                     T beta, T* y, ftn_int incy, stream_id sid = stream_id(-1));
+
     /*
         rank2 update
     */
@@ -124,6 +139,9 @@ class linalg
     /// solve Ax=b in place of b where A is factorized with sytrf.
     template <typename T>
     inline int sytrs(ftn_int n, ftn_int nrhs, T* A, ftn_int lda, ftn_int* ipiv, T* b, ftn_int ldb) const;
+
+    template <typename T>
+    inline int getrs(char trans, ftn_int n, ftn_int nrhs, T const* A, ftn_int lda, ftn_int* ipiv, T* B, ftn_int ldb) const;
 
     /*
         matrix inversion
@@ -199,6 +217,7 @@ class linalg
     template <typename T>
     inline int gesv(ftn_int n, ftn_int nrhs, T* A, ftn_int lda, T* B, ftn_int ldb) const;
 
+
     /*
         matrix transposition
     */
@@ -226,6 +245,34 @@ class linalg
     template <typename T>
     inline std::tuple<ftn_double, ftn_double, ftn_double> lartg(T f, T g) const;
 };
+
+
+template<>
+inline void linalg::axpy(int n, ftn_double_complex const* alpha, ftn_double_complex const* x, int incx, ftn_double_complex* y, int incy)
+{
+    assert(n > 0);
+    assert(incx > 0);
+    assert(incy > 0);
+
+    switch (la_) {
+        case linalg_t::blas: {
+            FORTRAN(zaxpy)(&n, alpha, x, &incx, y, &incy);
+            break;
+        }
+#if defined(__GPU)
+        case linalg_t::gpublas: {
+            accblas::zaxpy(n, reinterpret_cast<const acc_complex_double_t*>(alpha),
+                           reinterpret_cast<const acc_complex_double_t*>(x), incx,
+                           reinterpret_cast<acc_complex_double_t*>(y), incy);
+            break;
+        }
+#endif
+        default: {
+            throw std::runtime_error(linalg_msg_wrong_type);
+            break;
+        }
+    }
+}
 
 template <>
 inline void linalg::gemm<ftn_double>(char transa, char transb, ftn_int m, ftn_int n, ftn_int k, ftn_double const* alpha,
@@ -516,8 +563,37 @@ inline void linalg::trmm<ftn_double_complex>(char side, char uplo, char transa, 
     }
 }
 
-template<>
-inline int linalg::potrf<ftn_double>(ftn_int n, ftn_double* A, ftn_int lda, ftn_int const* desca) const
+template <>
+inline void
+linalg::hbmv(char uplo, ftn_int n, ftn_int k, ftn_double_complex alpha, const ftn_double_complex* a, ftn_int lda,
+             const ftn_double_complex* x, ftn_int incx, ftn_double_complex beta, ftn_double_complex* y, ftn_int incy, stream_id sid)
+{
+    switch (la_) {
+        case linalg_t::blas: {
+            FORTRAN(zhbmv)
+            (&uplo, &n, &k, &alpha, const_cast<ftn_double_complex*>(a), &lda, const_cast<ftn_double_complex*>(x), &incx,
+             &beta, y, &incy);
+            break;
+        }
+#if defined(__GPU)
+        case linalg_t::gpublas: {
+            accblas::zhbmv(
+                uplo, n, k, reinterpret_cast<acc_complex_double_t const*>(&alpha),
+                reinterpret_cast<acc_complex_double_t const*>(a), lda, reinterpret_cast<acc_complex_double_t const*>(x),
+                incx, reinterpret_cast<acc_complex_double_t const*>(&beta), reinterpret_cast<acc_complex_double_t*>(y),
+                incy, sid());
+        }
+#endif
+        default: {
+            throw std::runtime_error(linalg_msg_wrong_type);
+            break;
+        }
+    }
+}
+
+template <>
+inline int
+linalg::potrf<ftn_double>(ftn_int n, ftn_double* A, ftn_int lda, ftn_int const* desca) const
 {
     switch (la_) {
         case linalg_t::lapack: {
@@ -779,6 +855,12 @@ inline int linalg::getrf<ftn_double_complex>(ftn_int m, ftn_int n, ftn_double_co
             return info;
             break;
         }
+#if defined(__GPU)
+        case linalg_t::gpublas: {
+            return acclapack::getrf(m, n, reinterpret_cast<acc_complex_double_t*>(A), ipiv, lda);
+            break;
+        }
+#endif
         default: {
             throw std::runtime_error(linalg_msg_wrong_type);
             break;
@@ -804,6 +886,30 @@ inline int linalg::getrf<ftn_double_complex>(ftn_int m, ftn_int n, dmatrix<ftn_d
 #endif
             break;
         }
+        default: {
+            throw std::runtime_error(linalg_msg_wrong_type);
+            break;
+        }
+    }
+    return -1;
+}
+
+template<>
+inline int linalg::getrs<ftn_double_complex>(char trans, ftn_int n, ftn_int nrhs, const ftn_double_complex *A, ftn_int lda, ftn_int *ipiv, ftn_double_complex* B, ftn_int ldb) const
+{
+    switch (la_) {
+        case linalg_t::lapack: {
+            ftn_int info;
+            FORTRAN(zgetrs)(&trans, &n, &nrhs, const_cast<ftn_double_complex*>(A), &lda, ipiv, B, &ldb, &info);
+            return info;
+            break;
+        }
+#if defined (__GPU)
+        case linalg_t::gpublas: {
+            return acclapack::getrs(trans, n, nrhs, reinterpret_cast<const acc_complex_double_t*>(A), lda, ipiv, reinterpret_cast<acc_complex_double_t*>(B), ldb);
+            break;
+        }
+#endif
         default: {
             throw std::runtime_error(linalg_msg_wrong_type);
             break;

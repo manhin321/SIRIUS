@@ -8,7 +8,9 @@ endif()
 
 if(USE_CUDA OR USE_ROCM)
   file(GLOB_RECURSE CUFILES "gpu/*.cu")
-  set(_CUSOURCES "${CUFILES}")
+  file(GLOB_RECURSE CUFILES_PRECOND "preconditioner/*.cu")
+  message("cufiles precond: ${CUFILES_PRECOND}")
+  set(_CUSOURCES "${CUFILES};${CUFILES_PRECOND}")
 endif()
 
 set(_SOURSES
@@ -27,6 +29,7 @@ set(_SOURSES
   "dft/dft_ground_state.cpp"
   "dft/energy.cpp"
   "beta_projectors/beta_projectors_base.cpp"
+  "beta_projectors/beta_projectors.cpp"
   "hubbard/apply_hubbard_potential.cpp"
   "hubbard/hubbard.cpp"
   "hubbard/hubbard_occupancies_derivatives.cpp"
@@ -123,7 +126,7 @@ target_link_libraries(sirius PUBLIC SpFFT::spfft
                                     $<TARGET_NAME_IF_EXISTS:sirius_rocm_interface>
                                     $<TARGET_NAME_IF_EXISTS:nlcglib::nlcglib>
                                     $<TARGET_NAME_IF_EXISTS:kokkos::kokkos>
-                                    $<$<BOOL:${USE_NVTX}>:nvToolsExt>
+                                    $<$<BOOL:${USE_NVTX}>:${CUDA_nvToolsExt_LIBRARY}>
                                     $<$<BOOL:${USE_ROCM}>:roc::rocblas>
                                     $<$<BOOL:${USE_ROCM}>:hip::host>
                                     )

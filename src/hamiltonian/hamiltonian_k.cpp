@@ -599,7 +599,7 @@ void Hamiltonian_k::set_fv_h_o_apw_lo(Atom const& atom__, int ia__, mdarray<doub
     }
 }
 
-void Hamiltonian_k::set_fv_h_o_lo_lo(dmatrix<double_complex>& h__, dmatrix<double_complex>& o__) const 
+void Hamiltonian_k::set_fv_h_o_lo_lo(dmatrix<double_complex>& h__, dmatrix<double_complex>& o__) const
 {
     PROFILE("sirius::Hamiltonian_k::set_fv_h_o_lo_lo");
 
@@ -641,7 +641,7 @@ void Hamiltonian_k::set_fv_h_o_lo_lo(dmatrix<double_complex>& h__, dmatrix<doubl
     }
 }
 
-void Hamiltonian_k::set_fv_h_o_it(dmatrix<double_complex>& h__, dmatrix<double_complex>& o__) const 
+void Hamiltonian_k::set_fv_h_o_it(dmatrix<double_complex>& h__, dmatrix<double_complex>& o__) const
 {
     PROFILE("sirius::Hamiltonian_k::set_fv_h_o_it");
 
@@ -797,7 +797,8 @@ void Hamiltonian_k::apply_h_s(spin_range spins__, int N__, int n__, Wave_functio
 
     /* return if there are no beta-projectors */
     if (H0().ctx().unit_cell().mt_lo_basis_size()) {
-        apply_non_local_d_q<T>(spins__, N__, n__, kp().beta_projectors(), phi__, &H0().D(), hphi__, &H0().Q(), sphi__);
+        auto beta_coeffs = kp().beta_projectors().prepare();
+        apply_non_local_d_q<T>(spins__, N__, n__, kp().beta_projectors(), beta_coeffs, phi__, &H0().D(), hphi__, &H0().Q(), sphi__);
     }
 
     /* apply the hubbard potential if relevant */
@@ -1045,7 +1046,7 @@ void Hamiltonian_k::apply_fv_h_o(bool apw_only__, bool phi_is_lo__, int N__, int
                     /* create resulting array with proper dimensions from the already allocated chunk of memory */
                     alm_phi = matrix<double_complex>(alm_phi_buf.at(memory_t::host), num_mt_aw, n__);
                     /* alm_phi(lm, i) = A(G, lm)^{T} * C(G, i), remember that Alm was conjugated */
-                    linalg(linalg_t::blas).gemm('C', 'N', num_mt_aw, n__, ngv, 
+                    linalg(linalg_t::blas).gemm('C', 'N', num_mt_aw, n__, ngv,
                         &linalg_const<double_complex>::one(),  alm_block.at(memory_t::host), alm_block.ld(),
                         phi__.pw_coeffs(0).prime().at(memory_t::host, 0, N__), phi__.pw_coeffs(0).prime().ld(),
                         &linalg_const<double_complex>::zero(), alm_phi.at(memory_t::host), alm_phi.ld());

@@ -11,8 +11,9 @@
 #include <utility>
 #include <memory>
 #include <stdexcept>
+#ifdef _OPENMP
 #include <omp.h>
-#include <mpi.h>
+#endif
 
 #include "utils/json.hpp"
 #include "unit_cell/free_atom.hpp"
@@ -20,6 +21,9 @@
 #include "magnetization.hpp"
 #include "unit_cell_accessors.hpp"
 #include "make_sirius_comm.hpp"
+#include "beta_projectors/beta_projectors_base.hpp"
+#include "hamiltonian/inverse_overlap.hpp"
+#include "preconditioner/ultrasoft_precond.hpp"
 
 using namespace pybind11::literals;
 namespace py = pybind11;
@@ -87,20 +91,39 @@ std::string show_mat(const matrix3d<double>& mat)
 }
 
 template <class T>
-std::string show_vec(const vector3d<T>& vec)
+std::string
+show_mat(const mdarray<T, 2>& mat)
+{
+    std::string str = "[";
+    for (int i = 0; i < mat.size(0); ++i) {
+        str += "[";
+        for (int j = 0; j < mat.size(1); ++j) {
+            str += std::to_string(mat(i, j));
+            if (j < mat.size(1) - 1) {
+                str += ", ";
+            }
+        }
+        str += "]\n";
+    }
+    str += "]";
+    return str;
+}
+
+template <class T>
+std::string
+show_vec(const vector3d<T>& vec)
 {
     std::string str = "[" + std::to_string(vec[0]) + "," + std::to_string(vec[1]) + "," + std::to_string(vec[2]) + "]";
     return str;
 }
-
 // forward declaration
 void initialize_subspace(DFT_ground_state&, Simulation_context&);
 void apply_hamiltonian(Hamiltonian0& H0, K_point& kp, Wave_functions& wf_out, Wave_functions& wf, std::shared_ptr<Wave_functions>& swf);
 
-    /* typedefs */
-    template <typename T>
-    using matrix_storage_slab = sddk::matrix_storage<T, sddk::matrix_storage_t::slab>;
-    using complex_double      = std::complex<double>;
+/* typedefs */
+template <typename T>
+using matrix_storage_slab = sddk::matrix_storage<T, sddk::matrix_storage_t::slab>;
+using complex_double      = std::complex<double>;
 
 PYBIND11_MODULE(py_sirius, m)
 {
@@ -151,19 +174,28 @@ PYBIND11_MODULE(py_sirius, m)
     //m.def("timer_print", &utils::timer::print);
     m.def("num_devices", &acc::num_devices);
 
-    //py::class_<Parameters_input>(m, "Parameters_input")
-    //    .def(py::init<>())
-    //    .def_readonly("density_tol", &Parameters_input::density_tol_)
-    //    .def_readonly("energy_tol", &Parameters_input::energy_tol_)
-    //    .def_readonly("num_dft_iter", &Parameters_input::num_dft_iter_)
-    //    .def_readonly("shiftk", &Parameters_input::shiftk_)
-    //    .def_readonly("ngridk", &Parameters_input::ngridk_);
+    py::class_<sddk::memory_pool>(m, "memory_pool");
+
+    // rebase ultra-soft nlcg, commented Parameters_input
+    // py::class_<Parameters_input>(m, "Parameters_input")
+    //     .def(py::init<>())
+    //     .def_readonly("density_tol", &Parameters_input::density_tol_)
+    //     .def_readonly("energy_tol", &Parameters_input::energy_tol_)
+    //     .def_readonly("num_dft_iter", &Parameters_input::num_dft_iter_)
+    //     .def_readonly("shiftk", &Parameters_input::shiftk_)
+    //     .def_readonly("ngridk", &Parameters_input::ngridk_);
 
     //py::class_<Mixer_input>(m, "Mixer_input");
 
     py::class_<Communicator>(m, "Communicator");
 
-    py::class_<Simulation_context>(m, "Simulation_context")
+    // py::class_<Simulation_parameters>(m, "Simulation_parameters")
+    //     .def("mem_pool_by_mem_t", py::overload_cast<sddk::memory_t>(&Simulation_parameters::mem_pool, py::const_),
+    //          py::return_value_policy::reference)
+    //     .def("mem_pool_by_dev_t", py::overload_cast<sddk::device_t>(&Simulation_parameters::mem_pool),
+    //          py::return_value_policy::reference);
+
+    py::class_<Simulation_context/* , Simulation_parameters */>(m, "Simulation_context")
         .def(py::init<std::string const&>())
         .def(py::init<std::string const&, Communicator const&>(), py::keep_alive<1, 3>())
         .def("initialize", &Simulation_context::initialize)
@@ -229,6 +261,14 @@ PYBIND11_MODULE(py_sirius, m)
         .def("add_atom", py::overload_cast<const std::string, std::vector<double>>(&Unit_cell::add_atom))
         .def("atom", py::overload_cast<int>(&Unit_cell::atom), py::return_value_policy::reference)
         .def("atom_type", py::overload_cast<int>(&Unit_cell::atom_type), py::return_value_policy::reference)
+        .def_property_readonly("atom_types", [](const Unit_cell& uc){
+            // note: this might create memory issues, but Atom_type does not have a copy operators
+            std::vector<const Atom_type*> types(uc.num_atom_types());
+            for (int i = 0; i < uc.num_atom_types(); ++i) {
+                types[i] = &uc.atom_type(i);
+            }
+            return types;
+        }, py::return_value_policy::reference_internal)
         .def("lattice_vectors", &Unit_cell::lattice_vectors)
         .def(
             "set_lattice_vectors",
@@ -370,6 +410,7 @@ PYBIND11_MODULE(py_sirius, m)
     py::class_<Potential, Field4D>(m, "Potential")
         .def(py::init<Simulation_context&>(), py::keep_alive<1, 2>(), "ctx"_a)
         .def("generate", &Potential::generate)
+        .def("scalar", py::overload_cast<>(&Potential::scalar, py::const_), py::return_value_policy::reference_internal)
         .def("symmetrize", py::overload_cast<>(&Potential::symmetrize))
         .def("fft_transform", &Potential::fft_transform)
         .def("save", &Potential::save)
@@ -395,6 +436,7 @@ PYBIND11_MODULE(py_sirius, m)
         .def("check_num_electrons", &Density::check_num_electrons)
         .def("fft_transform", &Density::fft_transform)
         .def("mix", &Density::mix)
+        .def("get_rho", py::overload_cast<>(&Density::rho, py::const_), py::return_value_policy::reference_internal)
         .def("symmetrize", py::overload_cast<>(&Density::symmetrize))
         .def("symmetrize_density_matrix", &Density::symmetrize_density_matrix)
         .def("generate", py::overload_cast<K_point_set const&, bool, bool>(&Density::generate), "kpointset"_a,
@@ -462,20 +504,157 @@ PYBIND11_MODULE(py_sirius, m)
         .def("update", &DFT_ground_state::update)
         .def("energy_kin_sum_pw", &DFT_ground_state::energy_kin_sum_pw);
 
+    // .def_property_readonly_static("ia", [](auto obj) { return obj.desc_(static_cast<int>(beta_desc_idx::ia)); })
+    // .def_property_readonly_static("offset",
+    //                               [](auto obj) { return obj.desc_(static_cast<int>(beta_desc_idx::offset)); })
+    // .def_property_readonly_static("nbf",
+    //                               [](auto obj) { return obj.desc_(static_cast<int>(beta_desc_idx::nbf)); })
+
+    py::class_<beta_chunk_t>(m, "beta_chunk")
+        .def_readonly("num_beta", &beta_chunk_t::num_beta_)
+        .def_readonly("num_atoms", &beta_chunk_t::num_atoms_)
+        .def_readonly("desc", &beta_chunk_t::desc_, py::return_value_policy::reference_internal)
+        .def("__repr__",
+             [](const beta_chunk_t& obj) {
+                 std::stringstream buffer;
+                 for (int ia = 0; ia < obj.num_atoms_; ++ia) {
+                     buffer << "\t atom ia = " << ia << " ";
+                     buffer << "\t nbf     : " << std::setw(10) << obj.desc_(static_cast<int>(beta_desc_idx::nbf), ia)
+                            << " ";
+                     buffer << "\t offset  : " << std::setw(10)
+                            << obj.desc_(static_cast<int>(beta_desc_idx::offset), ia) << " ";
+                     buffer << "\t offset_t: " << std::setw(10)
+                            << obj.desc_(static_cast<int>(beta_desc_idx::offset_t), ia) << " ";
+                     buffer << "\t ja      : " << std::setw(10) << obj.desc_(static_cast<int>(beta_desc_idx::ia), ia)
+                            << " ";
+                     buffer << "\n";
+                 }
+
+                 return "num_beta: " + std::to_string(obj.num_beta_) + "\n" + "offset: " + std::to_string(obj.offset_) +
+                        "\n"
+                        "num_atoms: " +
+                        std::to_string(obj.num_atoms_) + "\n" + "desc:\n" + buffer.str();
+             })
+        .def_readonly("offset", &beta_chunk_t::offset_);
+
+    py::class_<beta_projectors_coeffs_t>(m, "beta_projector_coeffs")
+        .def_readonly("a", &beta_projectors_coeffs_t::pw_coeffs_a, py::return_value_policy::reference_internal)
+        .def_readonly("chunk", &beta_projectors_coeffs_t::beta_chunk, py::return_value_policy::reference_internal);
+
+    py::class_<Beta_projector_generator>(m, "Beta_projector_generator")
+        .def("generate", py::overload_cast<beta_projectors_coeffs_t&, int>(&Beta_projector_generator::generate, py::const_))
+        .def("generate_j", py::overload_cast<beta_projectors_coeffs_t&, int, int>(&Beta_projector_generator::generate, py::const_));
+
+    py::class_<Beta_projectors_base>(m, "Beta_projectors_base")
+        .def("prepare", &Beta_projectors_base::prepare, py::keep_alive<1, 0>())
+        .def_property_readonly("num_chunks", &Beta_projectors_base::num_chunks)
+        .def("make_generator", &Beta_projectors_base::make_generator, py::keep_alive<1, 0>());
+
+    py::class_<Beta_projectors, Beta_projectors_base>(m, "Beta_projectors");
+
+    py::class_<InverseS_k<complex_double>>(m, "InverseS_k")
+        .def(py::init<const Simulation_context&, const Q_operator&, const Beta_projectors_base&, int>(),
+             py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
+            using class_t = InverseS_k<complex_double>;
+            class_t& inverse_sk = obj.cast<class_t&>();
+            if (inverse_sk.ctx().preferred_memory_t() != memory_t::host) {
+                char msg[256];
+                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+
+            if (X.strides(0) != sizeof(complex_double)) {
+                char msg[256];
+                std::sprintf(msg, "invalid stride: [%ld, %ld] in %s:%d", X.strides(0), X.strides(1), __FILE__,
+                             __LINE__);
+                throw std::runtime_error(msg);
+            }
+            if (X.ndim() != 2) {
+                char msg[256];
+                std::sprintf(msg, "wrong dimension: %lu in %s:%d", X.ndim(), __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            auto ptr = X.request().ptr;
+            int rows = X.shape(0);
+            int cols = X.shape(1);
+            const sddk::mdarray<complex_double, 2> array(reinterpret_cast<complex_double*>(ptr), rows, cols);
+            return inverse_sk.apply(array);
+        });
+
+    py::class_<S_k<complex_double>>(m, "S_k")
+        .def(py::init<const Simulation_context&, const Q_operator&, const Beta_projectors_base&, int>(),
+             py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>())
+        .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
+            using class_t = S_k<complex_double>;
+            class_t& sk = obj.cast<class_t&>();
+            if(sk.ctx().preferred_memory_t() != memory_t::host) {
+                char msg[256];
+                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            if (X.strides(0) != sizeof(complex_double)) {
+                char msg[256];
+                std::sprintf(msg, "invalid stride: [%ld, %ld] in %s:%d", X.strides(0), X.strides(1), __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            if (X.ndim() != 2) {
+                char msg[256];
+                std::sprintf(msg, "wrong dimension: %lu in %s:%d", X.ndim(), __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            auto ptr = X.request().ptr;
+            int rows = X.shape(0);
+            int cols = X.shape(1);
+            const sddk::mdarray<complex_double, 2> array(static_cast<complex_double*>(ptr), rows, cols);
+            return sk.apply(array);
+        });
+
+    py::class_<Ultrasoft_preconditioner<complex_double>>(m, "Precond_us")
+        .def(py::init<Simulation_context&, const Q_operator&, int, const Beta_projectors_base&, const Gvec&>(),
+             py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 5>(), py::keep_alive<1, 6>())
+        .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
+            using class_t    = Ultrasoft_preconditioner<complex_double>;
+            class_t& precond = obj.cast<class_t&>();
+            if (precond.ctx().preferred_memory_t() != memory_t::host) {
+                char msg[256];
+                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            if (X.strides(0) != sizeof(complex_double)) {
+                char msg[256];
+                std::sprintf(msg, "invalid stride: [%ld, %ld] in %s:%d", X.strides(0), X.strides(1), __FILE__,
+                             __LINE__);
+                throw std::runtime_error(msg);
+            }
+            if (X.ndim() != 2) {
+                char msg[256];
+                std::sprintf(msg, "wrong dimension: %lu in %s:%d", X.ndim(), __FILE__, __LINE__);
+                throw std::runtime_error(msg);
+            }
+            auto ptr = X.request().ptr;
+            int rows = X.shape(0);
+            int cols = X.shape(1);
+            const sddk::mdarray<complex_double, 2> array(static_cast<complex_double*>(ptr), rows, cols);
+            return precond.apply(array);
+        });
+
     py::class_<K_point>(m, "K_point")
         .def("band_energy", py::overload_cast<int, int>(&K_point::band_energy, py::const_))
         .def_property_readonly("vk", &K_point::vk, py::return_value_policy::copy)
         .def("generate_fv_states", &K_point::generate_fv_states)
         .def("set_band_energy", [](K_point& kpoint, int j, int ispn, double val) { kpoint.band_energy(j, ispn, val); })
-        .def("band_energies",
-             [](K_point const& kpoint, int ispn) {
-                 std::vector<double> energies(kpoint.ctx().num_bands());
-                 for (int i = 0; i < kpoint.ctx().num_bands(); ++i) {
-                     energies[i] = kpoint.band_energy(i, ispn);
-                 }
-                 return energies;
-             },
-             py::return_value_policy::copy)
+        .def(
+            "band_energies",
+            [](K_point const& kpoint, int ispn) {
+                std::vector<double> energies(kpoint.ctx().num_bands());
+                for (int i = 0; i < kpoint.ctx().num_bands(); ++i) {
+                    energies[i] = kpoint.band_energy(i, ispn);
+                }
+                return energies;
+            },
+            py::return_value_policy::copy)
+
         .def("band_occupancy",
              [](K_point const& kpoint, int ispn) {
                  std::vector<double> occ(kpoint.ctx().num_bands());
@@ -484,15 +663,18 @@ PYBIND11_MODULE(py_sirius, m)
                  }
                  return occ;
              })
-        .def("set_band_occupancy",
-             [](K_point& kpoint, int ispn, const std::vector<double>& fn) {
-                 assert(static_cast<int>(fn.size()) == kpoint.ctx().num_bands());
-                 for (size_t i = 0; i < fn.size(); ++i) {
-                     kpoint.band_occupancy(i, ispn, fn[i]);
-                 }
-             },
-             "ispn"_a, "fn"_a)
+        .def(
+            "set_band_occupancy",
+            [](K_point& kpoint, int ispn, const std::vector<double>& fn) {
+                assert(static_cast<int>(fn.size()) == kpoint.ctx().num_bands());
+                for (size_t i = 0; i < fn.size(); ++i) {
+                    kpoint.band_occupancy(i, ispn, fn[i]);
+                }
+            },
+            "ispn"_a, "fn"_a)
         .def("gkvec_partition", &K_point::gkvec_partition, py::return_value_policy::reference_internal)
+        .def("beta_projectors", py::overload_cast<>(&K_point::beta_projectors),
+             py::return_value_policy::reference_internal)
         .def("gkvec", &K_point::gkvec, py::return_value_policy::reference_internal)
         .def("fv_states", &K_point::fv_states, py::return_value_policy::reference_internal)
         .def("ctx", &K_point::ctx, py::return_value_policy::reference_internal)
@@ -530,8 +712,15 @@ PYBIND11_MODULE(py_sirius, m)
              [](K_point_set& ks, std::vector<double> v, double weight) { ks.add_kpoint(v.data(), weight); })
         .def("add_kpoint", [](K_point_set& ks, vector3d<double>& v, double weight) { ks.add_kpoint(&v[0], weight); });
 
+    py::class_<Non_local_operator>(m, "Non_local_operator")
+        .def("get_matrix", &Non_local_operator::get_matrix<std::complex<double>>);
+    py::class_<D_operator, Non_local_operator>(m, "D_operator");
+    py::class_<Q_operator, Non_local_operator>(m, "Q_operator");
+
     py::class_<Hamiltonian0>(m, "Hamiltonian0")
         .def(py::init<Potential&>(), py::keep_alive<1, 2>())
+        .def("Q", &Hamiltonian0::Q, py::return_value_policy::reference_internal)
+        .def("D", &Hamiltonian0::D, py::return_value_policy::reference_internal)
         .def("potential", &Hamiltonian0::potential, py::return_value_policy::reference_internal);
 
     py::class_<Hamiltonian_k>(m, "Hamiltonian_k")
@@ -655,9 +844,25 @@ PYBIND11_MODULE(py_sirius, m)
                                        arr.at(memory_t::host), obj);
         });
 
+    py::class_<mdarray<int, 2>>(m, "mdarray2i")
+        .def("on_device", &mdarray<int, 2>::on_device)
+        .def("copy_to_host", [](mdarray<int, 2>& mdarray) { mdarray.copy_to(memory_t::host, 0, mdarray.size(1)); })
+        .def("__array__", [](py::object& obj) {
+            mdarray<int, 2>& arr = obj.cast<mdarray<int, 2>&>();
+            int nrows               = arr.size(0);
+            int ncols               = arr.size(1);
+            return py::array_t<int>({nrows, ncols}, {1 * sizeof(int), nrows * sizeof(int)},
+                                    arr.at(memory_t::host), obj);
+        });
+
     py::enum_<sddk::device_t>(m, "DeviceEnum").value("CPU", sddk::device_t::CPU).value("GPU", sddk::device_t::GPU);
 
-    py::enum_<sddk::memory_t>(m, "MemoryEnum").value("device", memory_t::device).value("host", memory_t::host);
+    py::enum_<sddk::memory_t>(m, "MemoryEnum")
+        .value("none", memory_t::none)
+        .value("device", memory_t::device)
+        .value("host", memory_t::host)
+        .value("host_pinned", memory_t::host_pinned)
+        .value("managed", memory_t::managed);
 
     // use std::shared_ptr as holder type, this required by Hamiltonian.apply_ref, apply_ref_inner
     py::class_<Wave_functions, std::shared_ptr<Wave_functions>>(m, "Wave_functions")
@@ -735,6 +940,8 @@ PYBIND11_MODULE(py_sirius, m)
     py::class_<Smooth_periodic_function<double>>(m, "Smooth_periodic_function")
         .def("fft", [](Smooth_periodic_function<double>& obj) { return obj.fft_transform(-1); })
         .def("ifft", [](Smooth_periodic_function<double>& obj) { return obj.fft_transform(1); })
+        .def("checksum_rg", &Smooth_periodic_function<double>::checksum_rg)
+        .def("checksum_pw", &Smooth_periodic_function<double>::checksum_pw)
         .def_property("pw", py::overload_cast<>(&Smooth_periodic_function<double>::f_pw_local),
                       py::overload_cast<>(&Smooth_periodic_function<double>::f_pw_local),
                       py::return_value_policy::reference_internal)
@@ -747,11 +954,14 @@ PYBIND11_MODULE(py_sirius, m)
     py::class_<Periodic_function<double>, Smooth_periodic_function<double>>(m, "RPeriodic_function");
 
     m.def("ewald_energy", &ewald_energy);
+    m.def("total_energy_components", &total_energy_components);
     m.def("set_atom_positions", &set_atom_positions);
     m.def("atom_positions", &atom_positions);
     m.def("energy_bxc", &energy_bxc);
+#ifdef _OPENMP
     m.def("omp_set_num_threads", &omp_set_num_threads);
     m.def("omp_get_num_threads", &omp_get_num_threads);
+#endif
     m.def("make_sirius_comm", &make_sirius_comm);
     m.def("make_pycomm", &make_pycomm);
     m.def("magnetization", &magnetization);
@@ -759,6 +969,8 @@ PYBIND11_MODULE(py_sirius, m)
     m.def("apply_hamiltonian", &apply_hamiltonian, "Hamiltonian0"_a, "kpoint"_a, "wf_out"_a,
           "wf_in"_a, py::arg("swf_out") = nullptr);
     m.def("initialize_subspace", &initialize_subspace);
+    // m.def("inner_beta", &inner_beta(const Beta_projectors_base&, const Simulation_context&)); // TODO change name
+    m.def("inner_beta", static_cast<sddk::matrix<double_complex>(*)(const Beta_projectors_base&, const Simulation_context&)>(inner_beta)); // TODO change name
 }
 
 void apply_hamiltonian(Hamiltonian0& H0, K_point& kp, Wave_functions& wf_out, Wave_functions& wf,
@@ -811,3 +1023,11 @@ void initialize_subspace(DFT_ground_state& dft_gs, Simulation_context& ctx)
     Hamiltonian0 H0(dft_gs.potential());
     Band(ctx).initialize_subspace(kset, H0);
 }
+
+// matrix<double_complex>
+// inner_beta(linalg_t linalg, device_t processing_unit, memory_t preferred_memory, memory_pool& mempool,
+//            const beta_projectors_coeffs_t& beta_projector_coeffs, Wave_functions& phi__, int ispn__, int idx0__,
+//            int n__)
+// {
+//     return inner<double_complex>(linalg, processing_unit, preferred_memory, mempool, beta_projector_coeffs, phi__, ispn__, idx0__, n__);
+// }

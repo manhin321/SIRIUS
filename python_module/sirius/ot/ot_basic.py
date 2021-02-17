@@ -1,4 +1,5 @@
 from ..py_sirius import ewald_energy, energy_bxc, Wave_functions, MemoryEnum, Hamiltonian0
+# from ..py_sirius import total_energy_components
 from ..coefficient_array import PwCoeffs
 import numpy as np
 
@@ -67,14 +68,20 @@ class Energy:
         if self.ctx.use_symmetry():
             self.density.symmetrize()
             self.density.symmetrize_density_matrix()
-
-        self.density.generate_paw_loc_density()
+        self.density.generate_paw_loc_density()  # is part of density.generate / remove?
         self.density.fft_transform(1)
         self.potential.generate(self.density)
         if self.ctx.use_symmetry():
             self.potential.symmetrize()
 
         self.potential.fft_transform(1)
+
+        # print checksums before applying hamiltonian
+        # print('density checksum_pw: %.8f + %.8f I' % (np.real(self.density.get_rho().checksum_pw()), np.imag(self.density.get_rho().checksum_pw())))
+        # print('density checksum_rg: %.8f' % self.density.get_rho().checksum_rg())
+
+        # print('potential checksum_pw: %.8f + %.8f I' % (np.real(self.potential.scalar().checksum_pw()), np.imag(self.potential.scalar().checksum_pw())))
+        # print('potential checksum_rg: %.8f' % self.potential.scalar().checksum_rg())
 
         yn = self.H(X, scale=False)
 
@@ -84,14 +91,21 @@ class Energy:
             benergies[:val.shape[1]] = np.einsum('ij,ij->j',
                                                  val,
                                                  np.conj(X[key]))
-
+            # print('DEBUG: printing band energies:')
             for j, ek in enumerate(benergies):
+                # print(np.real(ek), end=' ')
                 self.kpointset[k].set_band_energy(j, ispn, np.real(ek))
-
+            # print('\n')
         self.kpointset.sync_band_energies()
 
         Etot = pp_total_energy(self.potential, self.density,
                                self.kpointset, self.ctx)
+
+        # comps = total_energy_components(self.ctx, self.kpointset, self.density, self.potential, 1000)
+
+        # print('energy by components:')
+        # for k in comps:
+        #     print(k, '%.12f' % comps[k])
 
         return Etot, yn
 

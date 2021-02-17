@@ -134,6 +134,8 @@ void Energy::compute()
         density.symmetrize_density_matrix();
     }
 
+    density.generate_paw_loc_density();
+
     density.fft_transform(1);
     potential.generate(density);
 
@@ -142,6 +144,11 @@ void Energy::compute()
     }
     potential.fft_transform(1);
 
+    // // print checksum before applying hamiltonian
+    // std::printf("density checksum_pw %.8f + %.8f I\n", std::real(density.rho().checksum_pw()), std::imag(density.rho().checksum_pw()));
+    // std::printf("density checksum_rg %.8f + %.8f I\n", std::real(density.rho().checksum_rg()), std::imag(density.rho().checksum_rg()));
+    // std::printf("potential checksum_pw %.8f + %.8f I\n", std::real(potential.scalar().checksum_pw()), std::imag(potential.scalar().checksum_pw()));
+    // std::printf("potential checksum_rg %.8f + %.8f I\n", std::real(potential.scalar().checksum_rg()), std::imag(potential.scalar().checksum_rg()));
 
     /* compute H@X and new band energies */
     auto H0 = Hamiltonian0(potential);
@@ -163,6 +170,7 @@ void Energy::compute()
         assert(cphis[i] == kp.spinor_wave_functions_ptr());
         apply_hamiltonian(H0, kp, *hphis[i], kp.spinor_wave_functions(), sphis[i]);
         // compute band energies
+        // std::cout << "DEBUG: printing band energies:" << "\n";
         for (int ispn = 0; ispn < num_spins; ++ispn) {
             for (int jj = 0; jj < num_bands; ++jj) {
                 dmatrix<std::complex<double>> dmat(1, 1, memory_t::host);
@@ -173,6 +181,7 @@ void Energy::compute()
                             /* out */ dmat, 0, 0);
                 // deal with memory...
                 // assert(std::abs(dmat(0, 0).imag()) < 1e-10);
+                // std::cout << std::setprecision(8) << dmat(0,0).real() << ", ";
                 kp.band_energy(jj, ispn, dmat(0, 0).real());
             }
         }
@@ -182,6 +191,10 @@ void Energy::compute()
     // evaluate total energy
     double eewald = ewald_energy(ctx, ctx.gvec(), ctx.unit_cell());
     this->etot    = total_energy(ctx, kset, density, potential, eewald);
+    // auto comps = total_energy_components(ctx, kset, density, potential, eewald);
+    // for (auto elem : comps) {
+    //     std::cout << elem.first << " " << std::setprecision(12) << elem.second  << "\n";
+    // }
 }
 
 

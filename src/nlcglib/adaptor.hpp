@@ -193,6 +193,37 @@ class Energy : public nlcglib::EnergyBase
     double etot{std::nan("1")};
 };
 
+
+template <class numeric_t>
+auto
+make_matrix_view(nlcglib::buffer_protocol<numeric_t, 2>& buf)
+{
+    int nrows = buf.size[0];
+    int ncols = buf.size[1];
+
+    if (buf.stride[0] != 1 || buf.stride[1] != nrows) {
+        throw std::runtime_error("strides not compatible with sddk::mdarray");
+    }
+
+    numeric_t *device_ptr{nullptr}, *host_ptr{nullptr};
+
+    switch (buf.memtype) {
+        case nlcglib::memory_type::device: {
+            device_ptr = buf.data;
+            break;
+        }
+        case nlcglib::memory_type::host: {
+            host_ptr = buf.data;
+            break;
+        }
+        default:
+            throw std::runtime_error("buffer protocol invalid memory type.");
+            break;
+    }
+
+    return sddk::matrix<numeric_t>(host_ptr, device_ptr, nrows, ncols);
+}
+
 } // namespace sirius
 
 #endif /* NLCGLIB_ADAPTOR_H */

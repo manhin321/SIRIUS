@@ -33,8 +33,14 @@ def modified_gram_schmidt(X):
     return Q
 
 
-def loewdin(X):
-    S = X.H @ X
-    w, U = S.eigh()
-    Sm2 = U @ spdiag(1/np.sqrt(w)) @ U.H
-    return X @ Sm2
+def loewdin(X, S=None):
+    if S is None:
+        M = X.H @ X
+        w, U = M.eigh()
+        R = U @ spdiag(1/np.sqrt(w)) @ U.H
+    else:
+        M = X.H @ (S @ X)
+        w, U = M.eigh()
+        R = U @ spdiag(1/np.sqrt(w)) @ U.H
+
+    return X @ R

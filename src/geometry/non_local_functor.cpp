@@ -44,23 +44,31 @@ void Non_local_functor<T>::add_k_point_contribution(K_point& kpoint__, sddk::mda
 
     for (int icnk = 0; icnk < bp_base_.num_chunks(); icnk++) {
 
-        bp.prepare();
-        /* generate chunk for inner product of beta */
-        bp.generate(icnk);
-
         /* store <beta|psi> for spin up and down */
+
         matrix<T> beta_phi_chunks[2];
+        {
+            auto beta_coeffs = bp.prepare();
+            /* generate chunk for inner product of beta */
+            auto gen = bp.make_generator();
+            gen.generate(beta_coeffs, icnk);
 
-        for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
-            int nbnd = kpoint__.num_occupied_bands(ispn);
-            beta_phi_chunks[ispn] = bp.inner<T>(icnk, kpoint__.spinor_wave_functions(), ispn, 0, nbnd);
+            for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
+                int nbnd = kpoint__.num_occupied_bands(ispn);
+                // beta_phi_chunks[ispn] = bp.inner<T>(icnk, kpoint__.spinor_wave_functions(), ispn, 0, nbnd);
+                // beta_phi_chunks[ispn] = inner<T>(bp, icnk, kpoint__.spinor_wave_functions(), ispn, 0, nbnd);
+                beta_phi_chunks[ispn] = inner<T>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
+                                                 ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
+                                                 beta_coeffs, kpoint__.spinor_wave_functions(), ispn, 0, nbnd);
+            }
+            // bp.dismiss();
         }
-        bp.dismiss();
 
-        bp_base_.prepare();
+        auto beta_coeffs = bp_base_.prepare();
+        auto gen = bp_base_.make_generator();
         for (int x = 0; x < bp_base_.num_comp(); x++) {
             /* generate chunk for inner product of beta gradient */
-            bp_base_.generate(icnk, x);
+            gen.generate(beta_coeffs, icnk, x);
 
             for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
                 int spin_factor = (ispn == 0 ? 1 : -1);
@@ -68,8 +76,8 @@ void Non_local_functor<T>::add_k_point_contribution(K_point& kpoint__, sddk::mda
                 int nbnd = kpoint__.num_occupied_bands(ispn);
 
                 /* inner product of beta gradient and WF */
-                auto bp_base_phi_chunk = bp_base_.template inner<T>(icnk, kpoint__.spinor_wave_functions(), ispn, 0,
-                                                                    nbnd);
+                auto bp_base_phi_chunk = inner<T>(ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
+                                                  ctx_.mem_pool(device_t::CPU), beta_coeffs, kpoint__.spinor_wave_functions(), ispn, 0, nbnd);
 
                 splindex<splindex_t::block> spl_nbnd(nbnd, kpoint__.comm().size(), kpoint__.comm().rank());
 
@@ -158,11 +166,9 @@ void Non_local_functor<T>::add_k_point_contribution(K_point& kpoint__, sddk::mda
                         } // jbf
                     } // ibf
                 } // ia_chunk
-            } // ispn
+                } // ispn
         } // x
     }
-
-    bp_base_.dismiss();
 }
 
 template void
