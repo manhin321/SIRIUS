@@ -115,8 +115,8 @@ class Ultrasoft_preconditioner
                              int ispn,
                              const Beta_projectors_base& bp, const Gvec& gkvec);
 
-    sddk::mdarray<numeric_t, 2> apply(const sddk::mdarray<numeric_t, 2>& X);
-    void apply(sddk::mdarray<numeric_t, 2>& Y, const sddk::mdarray<numeric_t, 2>& X);
+    sddk::mdarray<numeric_t, 2> apply(const sddk::mdarray<numeric_t, 2>& X, memory_t pm = memory_t::none);
+    void apply(sddk::mdarray<numeric_t, 2>& Y, const sddk::mdarray<numeric_t, 2>& X, memory_t pm = memory_t::none);
 
     const Simulation_context& ctx() const { return ctx_; }
 
@@ -178,44 +178,54 @@ Ultrasoft_preconditioner<numeric_t>::Ultrasoft_preconditioner(Simulation_context
 }
 
 template <class numeric_t>
-sddk::mdarray<numeric_t,2> Ultrasoft_preconditioner<numeric_t>::apply(const sddk::mdarray<numeric_t, 2> &X)
+sddk::mdarray<numeric_t,2> Ultrasoft_preconditioner<numeric_t>::apply(const sddk::mdarray<numeric_t, 2> &X, memory_t pm)
 {
-    auto Y = empty_like(X, ctx_.mem_pool(ctx_.preferred_memory_t()));
-    this->apply(Y, X);
+    auto Y =
+        empty_like(X, ctx_.mem_pool(pm == memory_t::none ? ctx_.preferred_memory_t() : pm));
+    this->apply(Y, X, pm);
     return Y;
 }
 
 template <class numeric_t>
 void
-Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const sddk::mdarray<numeric_t, 2>& X)
+Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const sddk::mdarray<numeric_t, 2>& X, memory_t pm)
 {
     int num_beta = bp.num_total_beta();
     int nbnd     = X.size(1);
 
-    auto bp_gen      = bp.make_generator();
+    pm = (pm == memory_t::none) ? ctx_.preferred_memory_t() : pm;
+    device_t pu = is_host_memory(pm) ? device_t::CPU : device_t::GPU;
+
+    linalg_t la{linalg_t::none};
+    switch (pu) {
+        case device_t::CPU: {
+            la = linalg_t::blas;
+            break;
+        }
+        case device_t::GPU: {
+            la = linalg_t::gpublas;
+            break;
+        }
+    }
+
+    auto bp_gen      = bp.make_generator(pu);
     auto beta_coeffs = bp.prepare();
-    sddk::mdarray<numeric_t, 2> bphi(num_beta, nbnd, ctx_.mem_pool(ctx_.preferred_memory_t()));
+    sddk::mdarray<numeric_t, 2> bphi(num_beta, nbnd, ctx_.mem_pool(pm));
     // compute inner Beta^H X -> goes to host memory
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         bp_gen.generate(beta_coeffs, ichunk);
         // apply preconditioner to beta projectors
-        auto G = P.apply(beta_coeffs.pw_coeffs_a, ctx_.processing_unit());
+        auto G = P.apply(beta_coeffs.pw_coeffs_a, pu);
         int row_offset = beta_coeffs.beta_chunk.offset_;
         // TODO: at memory_t dependent ptr / blas
         // linalg(linalg_t::blas)
         //     .gemm('C', 'N', G.size(1), nbnd, G.size(0), &linalg_const<numeric_t>::one, G.at(memory_t::host), G.ld(),
         //           X.at(memory_t::host), X.ld(), &linalg_const<numeric_t>::zero(),
         //           bphi.at(memory_t::host, row_offset, 0), bphi.ld());
-        linalg_t la{linalg_t::blas};
-        memory_t mem{memory_t::host};
-        if (ctx_.processing_unit() == device_t::GPU) {
-            la = linalg_t::gpublas;
-            mem = memory_t::device;
-        }
         linalg(la)
-            .gemm('C', 'N', G.size(1), nbnd, G.size(0), &linalg_const<numeric_t>::one(), G.at(mem), G.ld(),
-                  X.at(mem), X.ld(), &linalg_const<numeric_t>::zero(),
-                  bphi.at(mem, row_offset, 0), bphi.ld());
+            .gemm('C', 'N', G.size(1), nbnd, G.size(0), &linalg_const<numeric_t>::one(), G.at(pm), G.ld(),
+                  X.at(pm), X.ld(), &linalg_const<numeric_t>::zero(),
+                  bphi.at(pm, row_offset, 0), bphi.ld());
         // linalg(linalg_t::blas).gemm(char transa, char transb, ftn_int m, ftn_int n, ftn_int k, const T *alpha, const
         // T *A, ftn_int lda, const T *B, ftn_int ldb, const T *beta, T *C, ftn_int ldc)
         //         auto bphi_loc = inner<numeric_t>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
@@ -232,18 +242,27 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
         //         }
     }
     assert(num_beta == static_cast<int>(bphi.size(0)) && nbnd == static_cast<int>(bphi.size(1)));
-    linalg_t la{linalg_t::lapack};
-    memory_t mem{memory_t::host};
-    if(ctx_.processing_unit() == device_t::GPU) {
-        la = linalg_t::gpublas;
-        mem = memory_t::device;
+
+    linalg_t lapack;
+    switch (pu) {
+        case device_t::CPU: {
+            lapack = linalg_t::lapack;
+            break;
+        }
+        case device_t::GPU: {
+            lapack = linalg_t::gpublas;
+            break;
+        }
+        default:
+            throw std::runtime_error("wrong device type");
+            break;
     }
-    linalg(la)
-        .getrs('N', num_beta, nbnd, LU.at(mem), LU.ld(), ipiv.at(mem), bphi.at(mem),
+    linalg(lapack)
+        .getrs('N', num_beta, nbnd, LU.at(pm), LU.ld(), ipiv.at(pm), bphi.at(pm),
                bphi.ld());
 
-    auto R = empty_like(bphi, ctx_.mem_pool(ctx_.preferred_memory_t()));
-    q_op.rmatmul(R, bphi, ispn, ctx_.preferred_memory_t(), -1);
+    auto R = empty_like(bphi, ctx_.mem_pool(pm));
+    q_op.rmatmul(R, bphi, ispn, pm, -1);
 
 //     if (ctx_.processing_unit() == device_t::GPU) {
 // #ifdef __GPU
@@ -254,17 +273,17 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
 //     }
 
     // compute Y <- (1+T')^(-1) X
-    this->P.apply(Y, X, ctx_.processing_unit());
+    this->P.apply(Y, X, pu);
 
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         bp_gen.generate(beta_coeffs, ichunk);
         // apply preconditioner to beta projectors in place
-        auto G = P.apply(beta_coeffs.pw_coeffs_a, ctx_.processing_unit());
+        auto G = P.apply(beta_coeffs.pw_coeffs_a, pu);
         int m = Y.size(0);
         int n = Y.size(1);
         int k = beta_coeffs.pw_coeffs_a.size(1);
 
-        switch (ctx_.processing_unit()) {
+        switch (pu) {
             case device_t::CPU: {
                 linalg(linalg_t::blas)
                     .gemm('N', 'N', m, n, k, &linalg_const<numeric_t>::one(),

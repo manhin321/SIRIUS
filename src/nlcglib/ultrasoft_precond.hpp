@@ -55,7 +55,8 @@ void UltrasoftPrecond::apply(const key_t& key, buffer_t& out, buffer_t& in) cons
     auto& op    = data.at(key);
     auto array_out = make_matrix_view(out);
     auto array_in  = make_matrix_view(in);
-    op->apply(array_out, array_in);
+    memory_t pm = out.memtype == nlcglib::memory_type::host ? memory_t::host : memory_t::device;
+    op->apply(array_out, array_in, pm);
 }
 
 std::vector<std::pair<int,int>> UltrasoftPrecond::get_keys() const

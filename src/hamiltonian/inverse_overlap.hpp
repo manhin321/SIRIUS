@@ -43,8 +43,8 @@ class InverseS_k : public Overlap_operator
         initialize(bp);
     }
 
-    mdarray<numeric_t, 2> apply(const mdarray<numeric_t, 2>& X);
-    void apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X);
+    mdarray<numeric_t, 2> apply(const mdarray<numeric_t, 2>& X, memory_t pm = memory_t::none);
+    void apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm = memory_t::none);
 
     const std::string label{"inverse overlap"};
 
@@ -70,8 +70,8 @@ class S_k : public Overlap_operator
     { /* empty */
     }
 
-    mdarray<numeric_t, 2> apply(const mdarray<numeric_t, 2>& X);
-    void apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X);
+    mdarray<numeric_t, 2> apply(const mdarray<numeric_t, 2>& X, memory_t pu = memory_t::none);
+    void apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm  = memory_t::none);
 
     const std::string label{"overlap"};
 
@@ -90,6 +90,14 @@ InverseS_k<numeric_t>::initialize(const Beta_projectors_base& beta_projectors)
 
     // auto& beta_projectors = kp.beta_projectors();
     auto B              = inner_beta(beta_projectors, ctx_); // on preferred memory
+
+    {
+        if (preferred_memory == memory_t::device) {
+            B.allocate(memory_t::host).copy_to(memory_t::host);
+        }
+        std::cout << "B.checksum (initialize invSK): " << B.checksum() << "\n";
+    }
+
     sddk::matrix<numeric_t> BQ(B.size(0), q_op.size(1));
 
     if (ctx_.processing_unit() == device_t::GPU) {
@@ -116,15 +124,18 @@ InverseS_k<numeric_t>::initialize(const Beta_projectors_base& beta_projectors)
     // compute LU factorization, TODO: use GPU if needed
     linalg(linalg_t::lapack).getrf(n, n, LU.at(memory_t::host), LU.ld(), ipiv.at(memory_t::host));
 
-    // copy LU factorization to device if needed
-    auto mem = ctx_.preferred_memory_t();
-    if(is_device_memory(mem)) {
-        ipiv.allocate(mem);
-        ipiv.copy_to(mem);
+    std::cout << "InvSK LU checksum: " << LU.checksum() << std::endl;
 
-        LU.allocate(mem);
-        LU.copy_to(mem);
-    }
+    // copy LU factorization to device if needed
+    // LU is always computed on host
+    // auto mem = ctx_.preferred_memory_t();
+    // if(is_device_memory(mem)) {
+    //     ipiv.allocate(mem);
+    //     ipiv.copy_to(mem);
+
+    //     LU.allocate(mem);
+    //     LU.copy_to(mem);
+    // }
 }
 
 /// apply wfct
@@ -132,12 +143,26 @@ InverseS_k<numeric_t>::initialize(const Beta_projectors_base& beta_projectors)
 /// where P = -Q*(I + B*Q)⁻¹
 template <class numeric_t>
 void
-InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X)
+InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm)
 {
     int nbnd = X.size(1);
 
-    auto bp_gen = bp.make_generator();
+    pm = (pm == memory_t::none) ? ctx_.preferred_memory_t() : pm;
+    device_t pu = is_host_memory(pm) ? device_t::CPU : device_t::GPU;
 
+    linalg_t la{linalg_t::none};
+    switch (pu) {
+        case device_t::CPU: {
+            la = linalg_t::blas;
+            break;
+        }
+        case device_t::GPU: {
+            la = linalg_t::gpublas;
+            break;
+        }
+    }
+
+    auto bp_gen      = bp.make_generator(pu);
     auto beta_coeffs = bp.prepare();
 
     int num_beta = bp.num_total_beta();
@@ -147,7 +172,7 @@ InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         bp_gen.generate(beta_coeffs, ichunk);
 
-        auto bphi_loc = inner<numeric_t>(ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
+        auto bphi_loc = inner<numeric_t>(la, pu, pm,
                                          ctx_.mem_pool(memory_t::host), beta_coeffs, X, 0, nbnd);
 
         // copy submatrix to bphi
@@ -169,16 +194,16 @@ InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 
     sddk::matrix<numeric_t> R(q_op.size(0), bphi.size(1));
 
     // allocate bphi on gpu if needed
-    if (ctx_.preferred_memory_t() == memory_t::device) {
+    if (pm == memory_t::device) {
         bphi.allocate(ctx_.mem_pool(memory_t::device));
         bphi.copy_to(memory_t::device);
         R.allocate(memory_t::device);
     }
 
     // compute -Q*bphi
-    q_op.rmatmul(R, bphi, this->ispn, ctx_.preferred_memory_t(), -1);
+    q_op.rmatmul(R, bphi, this->ispn, pm, -1);
 
-    sddk::copy(Y, X);
+    sddk::copy(Y, X, pu);
 
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         // std::cout << "* ichunk: " << ichunk << "\n";
@@ -187,25 +212,10 @@ InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 
         int n = Y.size(1);
         int k = beta_coeffs.pw_coeffs_a.size(1);
 
-        memory_t mem{memory_t::none};
-        linalg_t la{linalg_t::none};
-        switch (ctx_.processing_unit()) {
-            case device_t::CPU: {
-                mem = memory_t::host;
-                la  = linalg_t::blas;
-                break;
-            }
-            case device_t::GPU: {
-                mem = memory_t::device;
-                la  = linalg_t::gpublas;
-                break;
-            }
-        }
-
         linalg(la).gemm('N', 'N', m, n, k, &linalg_const<numeric_t>::one(),
-                        beta_coeffs.pw_coeffs_a.at(mem), beta_coeffs.pw_coeffs_a.ld(),
-                        R.at(mem, beta_coeffs.beta_chunk.offset_, 0), R.ld(),
-                        &linalg_const<numeric_t>::one(), Y.at(mem), Y.ld());
+                        beta_coeffs.pw_coeffs_a.at(pm), beta_coeffs.pw_coeffs_a.ld(),
+                        R.at(pm, beta_coeffs.beta_chunk.offset_, 0), R.ld(),
+                        &linalg_const<numeric_t>::one(), Y.at(pm), Y.ld());
     }
 }
 
@@ -214,31 +224,43 @@ InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 
 /// where P = -Q*(I + B*Q)⁻¹
 template <class numeric_t>
 mdarray<numeric_t, 2>
-InverseS_k<numeric_t>::apply(const mdarray<numeric_t, 2>& X)
+InverseS_k<numeric_t>::apply(const mdarray<numeric_t, 2>& X, memory_t pm)
 {
-    auto Y = sddk::empty_like(X, ctx_.mem_pool(ctx_.preferred_memory_t()));
-    this->apply(Y, X);
+    auto Y = sddk::empty_like(X, ctx_.mem_pool(pm == memory_t::none ? ctx_.preferred_memory_t() : pm));
+    this->apply(Y, X, pm);
     return Y;
 }
 
 template <class numeric_t>
 void
-S_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X)
+S_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm)
 {
+    pm          = (pm == memory_t::none) ? ctx_.preferred_memory_t() : pm;
+    device_t pu = is_host_memory(pm) ? device_t::CPU : device_t::GPU;
+
     int nbnd = X.size(1);
-
-    auto bp_gen = bp.make_generator();
-
+    auto bp_gen = bp.make_generator(pu);
     auto beta_coeffs = bp.prepare();
-
     int num_beta = bp.num_total_beta();
+
+    linalg_t la{linalg_t::none};
+    switch (pu) {
+        case device_t::CPU: {
+            la  = linalg_t::blas;
+            break;
+        }
+        case device_t::GPU: {
+            la  = linalg_t::gpublas;
+            break;
+        }
+    }
 
     sddk::mdarray<numeric_t, 2> bphi(num_beta, nbnd);
     // compute inner Beta^H X -> goes to host memory
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         bp_gen.generate(beta_coeffs, ichunk);
 
-        auto bphi_loc = inner<numeric_t>(ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
+        auto bphi_loc = inner<numeric_t>(la, pu, pm,
                                          ctx_.mem_pool(memory_t::host), beta_coeffs, X, 0, nbnd);
 
         // copy submatrix to bphi
@@ -254,15 +276,15 @@ S_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X)
 
     sddk::matrix<numeric_t> R(q_op.size(0), bphi.size(1));
     // allocate bphi on gpu if needed
-    if (ctx_.preferred_memory_t() == memory_t::device) {
+    if (pm == memory_t::device) {
         bphi.allocate(ctx_.mem_pool(memory_t::device));
         bphi.copy_to(memory_t::device);
         R.allocate(memory_t::device);
     }
 
-    q_op.rmatmul(R, bphi, this->ispn, ctx_.preferred_memory_t(), 1, 0);
+    q_op.rmatmul(R, bphi, this->ispn, pm, 1, 0);
 
-    sddk::copy(Y, X);
+    sddk::copy(Y, X, pu);
 
     for (int ichunk = 0; ichunk < bp.num_chunks(); ++ichunk) {
         // std::cout << "* ichunk: " << ichunk << "\n";
@@ -271,34 +293,20 @@ S_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X)
         int n = Y.size(1);
         int k = beta_coeffs.pw_coeffs_a.size(1);
 
-        memory_t mem{memory_t::none};
-        linalg_t la{linalg_t::none};
-        switch (ctx_.processing_unit()) {
-            case device_t::CPU: {
-                mem = memory_t::host;
-                la  = linalg_t::blas;
-                break;
-            }
-            case device_t::GPU: {
-                mem = memory_t::device;
-                la  = linalg_t::gpublas;
-                break;
-            }
-        }
-
         linalg(la).gemm('N', 'N', m, n, k, &linalg_const<numeric_t>::one(),
-                                    beta_coeffs.pw_coeffs_a.at(mem), beta_coeffs.pw_coeffs_a.ld(),
-                                    R.at(mem, beta_coeffs.beta_chunk.offset_, 0), R.ld(),
-                                    &linalg_const<numeric_t>::one(), Y.at(mem), Y.ld());
+                                    beta_coeffs.pw_coeffs_a.at(pm), beta_coeffs.pw_coeffs_a.ld(),
+                                    R.at(pm, beta_coeffs.beta_chunk.offset_, 0), R.ld(),
+                                    &linalg_const<numeric_t>::one(), Y.at(pm), Y.ld());
     }
 }
 
 template <class numeric_t>
 mdarray<numeric_t, 2>
-S_k<numeric_t>::apply(const mdarray<numeric_t, 2>& X)
+S_k<numeric_t>::apply(const mdarray<numeric_t, 2>& X, memory_t pm)
 {
-    auto Y = sddk::empty_like(X, ctx_.mem_pool(ctx_.preferred_memory_t()));
-    this->apply(Y, X);
+    auto Y = sddk::empty_like(
+        X, ctx_.mem_pool(pm == memory_t::none ? ctx_.preferred_memory_t() : pm));
+    this->apply(Y, X, pm);
     return Y;
 }
 

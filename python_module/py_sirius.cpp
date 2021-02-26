@@ -548,7 +548,7 @@ PYBIND11_MODULE(py_sirius, m)
     py::class_<Beta_projectors_base>(m, "Beta_projectors_base")
         .def("prepare", &Beta_projectors_base::prepare, py::keep_alive<1, 0>())
         .def_property_readonly("num_chunks", &Beta_projectors_base::num_chunks)
-        .def("make_generator", &Beta_projectors_base::make_generator, py::keep_alive<1, 0>());
+        .def("make_generator", py::overload_cast<>(&Beta_projectors_base::make_generator, py::const_), py::keep_alive<1, 0>());
 
     py::class_<Beta_projectors, Beta_projectors_base>(m, "Beta_projectors");
 
@@ -558,11 +558,6 @@ PYBIND11_MODULE(py_sirius, m)
         .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
             using class_t = InverseS_k<complex_double>;
             class_t& inverse_sk = obj.cast<class_t&>();
-            if (inverse_sk.ctx().preferred_memory_t() != memory_t::host) {
-                char msg[256];
-                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
-                throw std::runtime_error(msg);
-            }
 
             if (X.strides(0) != sizeof(complex_double)) {
                 char msg[256];
@@ -579,7 +574,7 @@ PYBIND11_MODULE(py_sirius, m)
             int rows = X.shape(0);
             int cols = X.shape(1);
             const sddk::mdarray<complex_double, 2> array(reinterpret_cast<complex_double*>(ptr), rows, cols);
-            return inverse_sk.apply(array);
+            return inverse_sk.apply(array, memory_t::host);
         });
 
     py::class_<S_k<complex_double>>(m, "S_k")
@@ -588,11 +583,7 @@ PYBIND11_MODULE(py_sirius, m)
         .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
             using class_t = S_k<complex_double>;
             class_t& sk = obj.cast<class_t&>();
-            if(sk.ctx().preferred_memory_t() != memory_t::host) {
-                char msg[256];
-                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
-                throw std::runtime_error(msg);
-            }
+
             if (X.strides(0) != sizeof(complex_double)) {
                 char msg[256];
                 std::sprintf(msg, "invalid stride: [%ld, %ld] in %s:%d", X.strides(0), X.strides(1), __FILE__, __LINE__);
@@ -607,7 +598,7 @@ PYBIND11_MODULE(py_sirius, m)
             int rows = X.shape(0);
             int cols = X.shape(1);
             const sddk::mdarray<complex_double, 2> array(static_cast<complex_double*>(ptr), rows, cols);
-            return sk.apply(array);
+            return sk.apply(array, memory_t::host);
         });
 
     py::class_<Ultrasoft_preconditioner<complex_double>>(m, "Precond_us")
