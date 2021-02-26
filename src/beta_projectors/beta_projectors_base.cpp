@@ -559,7 +559,7 @@ void Beta_projectors_base::generate(beta_projectors_coeffs_t& out, int ichunk__,
     }
 }
 
-beta_projectors_coeffs_t Beta_projectors_base::prepare() const
+beta_projectors_coeffs_t Beta_projectors_base::prepare(memory_t pm) const
 {
     PROFILE("sirius::Beta_projectors_base::prepare");
 
@@ -572,24 +572,31 @@ beta_projectors_coeffs_t Beta_projectors_base::prepare() const
 
     beta_storage.comm = gkvec_.comm().duplicate();
 
-    switch (ctx_.processing_unit()) {
-        case device_t::CPU: {
-            beta_storage.pw_coeffs_a = matrix<double_complex>(num_gkvec_loc(), max_num_beta(), ctx_.mem_pool(ctx_.host_memory_t()));
-            beta_storage.pw_coeffs_a_g0 = mdarray<double_complex, 1>(max_num_beta(), ctx_.mem_pool(memory_t::host));
+    device_t pu;
+    switch (pm) {
+        case memory_t::none: {
+            pu = ctx_.processing_unit();
             break;
         }
-        case device_t::GPU: {
-            beta_storage.pw_coeffs_a = matrix<double_complex>(num_gkvec_loc(), max_num_beta(), ctx_.mem_pool(memory_t::device));
-            beta_storage.pw_coeffs_a_g0 = mdarray<double_complex, 1>(max_num_beta(), ctx_.mem_pool(memory_t::host));
-            beta_storage.pw_coeffs_a_g0.allocate(ctx_.mem_pool(memory_t::device));
+        case memory_t::host: {
+            pu = device_t::CPU;
             break;
         }
+        case memory_t::device: {
+            pu = device_t::GPU;
+            break;
+        }
+        default:
+            throw std::runtime_error("invalid memory type in Beta_projectors_base::prepare");
+            break;
     }
 
-    // // TODO: remove
-    // if (ctx_.processing_unit() == device_t::GPU && reallocate_pw_coeffs_t_on_gpu_) {
-    //     pw_coeffs_t_.allocate(ctx_.mem_pool(memory_t::device)).copy_to(memory_t::device);
-    // }
+    if (pu == device_t::GPU) {
+        beta_storage.__pw_coeffs_a_buffer =
+            matrix<double_complex>(num_gkvec_loc(), max_num_beta(), ctx_.mem_pool(memory_t::device));
+        beta_storage.__pw_coeffs_a_g0_buffer = mdarray<double_complex, 1>(max_num_beta(), ctx_.mem_pool(memory_t::host));
+        beta_storage.__pw_coeffs_a_g0_buffer.allocate(ctx_.mem_pool(memory_t::device));
+    }
 
     return beta_storage;
 }
@@ -684,8 +691,8 @@ void Beta_projectors_base::local_inner_aux<double>(double* beta_pw_coeffs_a_ptr_
 
 void
 beta_projectors_generate_cpu(matrix<double_complex>& pw_coeffs_a, const mdarray<double_complex, 3>& pw_coeffs_t,
-                                  int ichunk__, int j__, const beta_chunk_t& beta_chunk, const Simulation_context& ctx,
-                                  const Gvec& gkvec, const std::vector<int>& igk__)
+                             int ichunk__, int j__, const beta_chunk_t& beta_chunk, const Simulation_context& ctx,
+                             const Gvec& gkvec, const std::vector<int>& igk__)
 {
     PROFILE("sirius::Beta_projectors_base::generate");
 
@@ -751,6 +758,9 @@ void Beta_projector_generator::generate(beta_projectors_coeffs_t &out, int ichun
     int j__        = 0;
     out.beta_chunk = beta_chunks_.at(ichunk__);
 
+    auto num_beta = out.beta_chunk.num_beta_;
+    auto gk_size  = igk_.size();
+
     switch (processing_unit_) {
         case device_t::CPU: {
             out.pw_coeffs_a = matrix<double_complex>(const_cast<double_complex*>(&beta_pw_all_atoms_(0, beta_chunks_[ichunk__].offset_)), igk_.size(),
@@ -759,7 +769,12 @@ void Beta_projector_generator::generate(beta_projectors_coeffs_t &out, int ichun
             break;
         }
         case device_t::GPU: {
-            beta_projectors_generate_gpu(out, pw_coeffs_t_device_, pw_coeffs_t_host_, ctx_, gkvec_, gkvec_coord_, beta_chunks_[ichunk__], igk_,j__);
+            out.pw_coeffs_a =
+                sddk::matrix<double_complex>(nullptr, out.__pw_coeffs_a_buffer.device_data(), gk_size, num_beta);
+            out.pw_coeffs_a_g0 =
+                sddk::mdarray<double_complex, 1>(nullptr, out.__pw_coeffs_a_g0_buffer.device_data(), num_beta);
+
+            beta_projectors_generate_gpu(out, pw_coeffs_t_device_, pw_coeffs_t_host_, ctx_, gkvec_, gkvec_coord_, beta_chunks_[ichunk__], igk_, j__);
             break;
         }
     }
@@ -770,14 +785,25 @@ Beta_projector_generator::generate(beta_projectors_coeffs_t& out, int ichunk__, 
 {
     PROFILE("sirius::Beta_projectors_base::generate");
 
-    out.beta_chunk = beta_chunks_[ichunk__];
+    out.beta_chunk = beta_chunks_.at(ichunk__);
+
+    auto num_beta = out.beta_chunk.num_beta_;
+    auto gk_size = igk_.size();
 
     switch (processing_unit_) {
         case device_t::CPU: {
+            //allocate pw_coeffs_a
+            out.pw_coeffs_a = sddk::matrix<double_complex>(gk_size, num_beta, ctx_.mem_pool(memory_t::host));
+            out.pw_coeffs_a_g0 = sddk::mdarray<double_complex, 1>(num_beta, ctx_.mem_pool(memory_t::host));
             beta_projectors_generate_cpu(out.pw_coeffs_a, pw_coeffs_t_host_, ichunk__, j__, beta_chunks_[ichunk__], ctx_, gkvec_, igk_);
             break;
         }
         case device_t::GPU: {
+            // view of internal buffer with correct number of cols (= num_beta)
+            out.pw_coeffs_a =
+                sddk::matrix<double_complex>(nullptr, out.__pw_coeffs_a_buffer.device_data(), gk_size, num_beta);
+            out.pw_coeffs_a_g0 = sddk::mdarray<double_complex, 1>(nullptr, out.__pw_coeffs_a_g0_buffer.device_data(), num_beta);
+
             beta_projectors_generate_gpu(out, pw_coeffs_t_device_, pw_coeffs_t_host_, ctx_, gkvec_, gkvec_coord_,
                                          beta_chunks_[ichunk__], igk_, j__);
             break;
@@ -800,6 +826,8 @@ sddk::matrix<double_complex> inner_beta(const Beta_projectors_base& beta, const 
 
         sddk::matrix<double_complex> out(size, size, preferred_memory);
 
+        std::cout << "num_beta_chunks: " << num_beta_chunks << "\n";
+
         double_complex one  = double_complex(1);
         double_complex zero = double_complex(0);
 
@@ -809,8 +837,8 @@ sddk::matrix<double_complex> inner_beta(const Beta_projectors_base& beta, const 
 
                 generator.generate(bcoeffs_col, jchunk);
 
-                int m                   = bcoeffs_row.pw_coeffs_a.size(1);
-                int n                   = bcoeffs_col.pw_coeffs_a.size(1);
+                int m                   = bcoeffs_row.beta_chunk.num_beta_;
+                int n                   = bcoeffs_col.beta_chunk.num_beta_;
                 int k                   = bcoeffs_col.pw_coeffs_a.size(0);
                 int dest_row            = bcoeffs_row.beta_chunk.offset_;
                 int dest_col            = bcoeffs_col.beta_chunk.offset_;

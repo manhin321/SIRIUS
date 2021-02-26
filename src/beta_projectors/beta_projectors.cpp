@@ -10,28 +10,22 @@ Beta_projectors::Beta_projectors(Simulation_context& ctx__, Gvec const& gkvec__,
     generate_pw_coefs_t(igk__);
     /* special treatment for beta-projectors as they are mostly often used */
 
-    switch (ctx_.processing_unit()) {
-        /* beta projectors for atom types will be stored on GPU for the entire run */
-        case device_t::GPU: {
-            reallocate_pw_coeffs_t_on_gpu_ = false;
-            // TODO remove is done in `Beta_projector_generator`
-            pw_coeffs_t_.allocate(memory_t::device).copy_to(memory_t::device);
-            break;
-        }
-        /* generate beta projectors for all atoms */
-        case device_t::CPU: {
-            // allocate beta_pw_all_atoms
-            beta_pw_all_atoms_ = matrix<double_complex>(num_gkvec_loc(), ctx_.unit_cell().mt_lo_basis_size());
-            for (int ichunk = 0; ichunk < num_chunks(); ++ichunk) {
-                pw_coeffs_a_ = matrix<double_complex>(&beta_pw_all_atoms_(0, chunk(ichunk).offset_), num_gkvec_loc(),
-                                                      chunk(ichunk).num_beta_);
-                beta_projectors_generate_cpu(pw_coeffs_a_, pw_coeffs_t_, ichunk, /*j*/ 0, chunk(ichunk), ctx__, gkvec__,
-                                             igk__);
-            }
-
-            break;
-        }
+    if(ctx_.processing_unit() == device_t::GPU) {
+        reallocate_pw_coeffs_t_on_gpu_ = false;
+        // TODO remove is done in `Beta_projector_generator`
+        pw_coeffs_t_.allocate(memory_t::device).copy_to(memory_t::device);
     }
+
+    // TODO: can be improved... nlcglib might ask for beta coefficients on host,
+    // create them such that they are there in any case
+    beta_pw_all_atoms_ = matrix<double_complex>(num_gkvec_loc(), ctx_.unit_cell().mt_lo_basis_size());
+    for (int ichunk = 0; ichunk < num_chunks(); ++ichunk) {
+        pw_coeffs_a_ = matrix<double_complex>(&beta_pw_all_atoms_(0, chunk(ichunk).offset_), num_gkvec_loc(),
+                                              chunk(ichunk).num_beta_);
+        beta_projectors_generate_cpu(pw_coeffs_a_, pw_coeffs_t_, ichunk, /*j*/ 0, chunk(ichunk), ctx__, gkvec__,
+                                     igk__);
+    }
+
 }
 
 void

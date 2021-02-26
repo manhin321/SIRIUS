@@ -96,26 +96,21 @@ struct beta_chunk_t
     }
 };
 
-// /// TODO: not used ...
-// struct beta_projectors_data
-// {
-//     /// Coordinates of G+k vectors used by GPU kernel.
-//     mdarray<double, 2> gkvec_coord;
-//     /// slices of the beta-projector
-//     std::vector<beta_chunk_t> beta_chunks;
-//     /// Phase-factor independent coefficients of |beta> functions for atom types.
-//     mdarray<double_complex, 3> pw_coeffs_t;
-// };
 
 struct beta_projectors_coeffs_t
 {
+
     matrix<double_complex> pw_coeffs_a;
     mdarray<double_complex, 1> pw_coeffs_a_g0;
-    /// communicator of the G+k vector distribution
     Communicator comm;
     beta_chunk_t beta_chunk;
-    // std::vector<beta_chunk_t> beta_chunks;
-};
+
+    /// buffer (num_max_beta) for pw_coeffs_a_g0
+    matrix<double_complex> __pw_coeffs_a_buffer;
+    /// buffer (num_max_beta) for pw_coeffs_a_g0
+    mdarray<double_complex, 1> __pw_coeffs_a_g0_buffer;
+    /// communicator of the G+k vector distribution
+    };
 
 /// Generates beta projector PW coefficients and holds GPU memory phase-factor
 /// independent coefficients of |> functions for atom types.
@@ -228,10 +223,15 @@ class Beta_projectors_base
 
     Beta_projector_generator make_generator() const
     {
+        return make_generator(ctx_.processing_unit());
+    }
+
+    Beta_projector_generator make_generator(device_t pu) const
+    {
         return Beta_projector_generator{ctx_,
                                         pw_coeffs_t_,
                                         beta_pw_all_atoms_,
-                                        ctx_.processing_unit(),
+                                        pu,
                                         beta_chunks_,
                                         gkvec_,
                                         gkvec_coord_,
@@ -315,7 +315,7 @@ class Beta_projectors_base
      */
     __attribute__((deprecated)) void generate(beta_projectors_coeffs_t& out, int ichunk__, int j__) const;
 
-    beta_projectors_coeffs_t prepare() const;
+    beta_projectors_coeffs_t prepare(memory_t pm = memory_t::none) const;
 
     __attribute_deprecated__ void dismiss();
 
@@ -412,8 +412,8 @@ sddk::matrix<double_complex> inner_beta(const Beta_projectors_base& beta, const 
 
                 generator.generate(bcoeffs_col, jchunk);
 
-                int m                   = bcoeffs_row.pw_coeffs_a.size(1);
-                int n                   = bcoeffs_col.pw_coeffs_a.size(1);
+                int m                   = bcoeffs_row.beta_chunk.num_beta_;
+                int n                   = bcoeffs_col.beta_chunk.num_beta_;
                 int k                   = bcoeffs_col.pw_coeffs_a.size(0);
                 int dest_row            = bcoeffs_row.beta_chunk.offset_;
                 int dest_col            = bcoeffs_col.beta_chunk.offset_;
