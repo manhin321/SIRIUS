@@ -285,7 +285,7 @@ endif(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
 
 if(BUILD_APPS)
   add_subdirectory(apps/atoms)
-  add_subdirectory(apps/test_beta_projectors)
+  # add_subdirectory(apps/test_beta_projectors)
   add_subdirectory(apps/hydrogen)
   add_subdirectory(apps/dft_loop)
   if(USE_NLCGLIB)
