@@ -894,9 +894,9 @@ get_rho_up_dn(Density const& density__, double add_delta_rho_xc__ = 0.0, double 
     auto& ctx = const_cast<Simulation_context&>(density__.ctx());
     int num_points = ctx.spfft().local_slice_size();
 
-    auto rho_up = std::unique_ptr<Smooth_periodic_function<double>>(new 
+    auto rho_up = std::unique_ptr<Smooth_periodic_function<double>>(new
             Smooth_periodic_function<double>(ctx.spfft(), ctx.gvec_partition()));
-    auto rho_dn = std::unique_ptr<Smooth_periodic_function<double>>(new 
+    auto rho_dn = std::unique_ptr<Smooth_periodic_function<double>>(new
             Smooth_periodic_function<double>(ctx.spfft(), ctx.gvec_partition()));
 
     /* compute "up" and "dn" components and also check for negative values of density */
