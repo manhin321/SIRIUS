@@ -1,10 +1,10 @@
 #ifndef OVERLAP_H
 #define OVERLAP_H
 
-#ifdef __NLCGLIB
+#ifdef SIRIUS_NLCGLIB
 #include "hamiltonian/inverse_overlap.hpp"
 #include "k_point/k_point_set.hpp"
-#include "simulation_context.hpp"
+#include "context/simulation_context.hpp"
 #include <nlcglib/interface.hpp>
 
 #include "hamiltonian/non_local_operator.hpp"

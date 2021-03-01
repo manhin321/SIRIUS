@@ -29,7 +29,7 @@
 #include <memory>
 #include <spla/spla.hpp>
 
-#include "simulation_parameters.hpp"
+#include "context/simulation_parameters.hpp"
 #include "mpi/mpi_grid.hpp"
 #include "radial/radial_integrals.hpp"
 #include "utils/utils.hpp"

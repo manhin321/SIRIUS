@@ -3,7 +3,7 @@
 
 #include "adaptor.hpp"
 #include "k_point/k_point_set.hpp"
-#include "simulation_context.hpp"
+#include "context/simulation_context.hpp"
 #include <nlcglib/interface.hpp>
 #include "hamiltonian/non_local_operator.hpp"
 #include "preconditioner/ultrasoft_precond.hpp"
@@ -13,7 +13,7 @@
 #include <memory>
 #include <complex>
 
-#ifdef __NLCGLIB
+#ifdef SIRIUS_NLCGLIB
 
 namespace sirius {
 

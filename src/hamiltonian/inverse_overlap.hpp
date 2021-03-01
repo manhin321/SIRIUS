@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 #include "non_local_operator.hpp"
-#include "simulation_context.hpp"
+#include "context/simulation_context.hpp"
 #include "k_point/k_point.hpp"
 #include  "beta_projectors/beta_projectors.hpp"
 #include "memory.h"

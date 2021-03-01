@@ -2,7 +2,7 @@
     \brief Provides preconditioner for ultrasoft case.
  */
 
-#include "simulation_context.hpp"
+#include "context/simulation_context.hpp"
 #include "hamiltonian/non_local_operator.hpp"
 #include "beta_projectors/beta_projectors_base.hpp"
 #include "SDDK/memory.hpp"

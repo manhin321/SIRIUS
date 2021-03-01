@@ -22,7 +22,7 @@
  *  \brief Contains implementation of sirius::Simulation_parameters class.
  */
 
-#include "simulation_parameters.hpp"
+#include "context/simulation_parameters.hpp"
 #include "mpi/communicator.hpp"
 
 /// Json dictionary containing the options given by the interface.
