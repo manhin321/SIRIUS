@@ -1607,7 +1607,7 @@ operator<<(std::ostream& out, mdarray<T, N>& v)
 /// Copy memory specified by device from src to dst.
 template <typename T, int N>
 void
-copy(mdarray<T, N>& dst, mdarray<T, N>& src, device_t device)
+copy(mdarray<T, N>& dst, const mdarray<T, N>& src, device_t device)
 {
     // TODO add also check shapes
     assert(src.size() == dst.size());

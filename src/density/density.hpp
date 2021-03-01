@@ -872,15 +872,16 @@ class Density : public Field4D
 inline void copy(Density const& src__, Density& dest__)
 {
     for (int j = 0; j < src__.ctx().num_mag_dims() + 1; j++) {
-        copy(src__.component(j).f_pw_local(), dest__.component(j).f_pw_local());
-        copy(src__.component(j).f_rg(), dest__.component(j).f_rg());
+        copy(dest__.component(j).f_pw_local(), src__.component(j).f_pw_local(), device_t::CPU);
+        copy(dest__.component(j).f_rg(), src__.component(j).f_rg(), device_t::CPU);
         if (src__.ctx().full_potential()) {
             for (int ialoc = 0; ialoc < src__.ctx().unit_cell().spl_num_atoms().local_size(); ialoc++) {
-                copy(src__.component(j).f_mt(ialoc), dest__.component(j).f_mt(ialoc));
+                copy(dest__.component(j).f_mt(ialoc), src__.component(j).f_mt(ialoc), device_t::CPU );
             }
         }
     }
-    copy(src__.density_matrix(), dest__.density_matrix());
+    copy(dest__.density_matrix(), src__.density_matrix(), device_t::CPU);
+    // copy(src__.occupation_matrix(), dest__.occupation_matrix());
     copy(src__.occupation_matrix(), dest__.occupation_matrix());
 }
 

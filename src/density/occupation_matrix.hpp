@@ -89,7 +89,9 @@ class Occupation_matrix {
 
 inline void copy(Occupation_matrix const& src__, Occupation_matrix& dest__)
 {
-    copy(src__.data(), dest__.data());
+    // copy(src__.data(), dest__.data());
+    copy(dest__.data(), src__.data(), device_t::CPU);
+    // copy(dest__.data(), src__.data());
 }
 
 } // namespace
