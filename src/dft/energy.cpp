@@ -181,7 +181,7 @@ total_energy_components(Simulation_context const& ctx, K_point_set const& kset, 
     table["valence_eval_sum"] = kset.valence_eval_sum();
     table["vxc"] = energy_vxc(density, potential);
     table["bxc"] = energy_bxc(density, potential);
-    table["PAW_one_elec"] = potential.PAW_one_elec_energy();
+    table["PAW_one_elec"] = potential.PAW_one_elec_energy(density);
     table["vha"] = energy_vha(potential);
     table["exc"] = energy_exc(density, potential);
     table["PAW_total_energy"] = potential.PAW_total_energy();

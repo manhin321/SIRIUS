@@ -74,7 +74,7 @@ Beta_projectors::generate_pw_coefs_t(std::vector<int>& igk__)
         }
     }
 
-    if (ctx_.control().print_checksum_) {
+    if (ctx_.cfg().control().print_checksum()) {
         auto c1 = pw_coeffs_t_.checksum();
         comm.allreduce(&c1, 1);
         if (comm.rank() == 0) {
