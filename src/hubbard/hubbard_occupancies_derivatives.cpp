@@ -34,452 +34,454 @@ namespace sirius {
 void
 Hubbard::compute_occupancies_derivatives(K_point& kp, Q_operator& q_op, sddk::mdarray<double_complex, 6>& dn__)
 {
-    PROFILE("sirius::Hubbard::compute_occupancies_derivatives");
+  throw std::runtime_error("compute_occupancy_derivatives not yet merged");
+//     PROFILE("sirius::Hubbard::compute_occupancies_derivatives");
 
-    dn__.zero();
-    // check if we have a norm conserving pseudo potential only. Only
-    // derivatives of the hubbard wave functions are needed.
-    auto& phi = kp.hubbard_wave_functions();
+//     dn__.zero();
+//     // check if we have a norm conserving pseudo potential only. Only
+//     // derivatives of the hubbard wave functions are needed.
+//     auto& phi = kp.hubbard_wave_functions();
 
-    Beta_projectors_gradient bp_grad(ctx_, kp.gkvec(), kp.igk_loc(), kp.beta_projectors());
-    bp_grad.prepare();
+//     Beta_projectors_gradient bp_grad(ctx_, kp.gkvec(), kp.igk_loc(), kp.beta_projectors());
+//     bp_grad.prepare();
 
-    bool augment = ctx_.unit_cell().augment();
+//     bool augment = ctx_.unit_cell().augment();
 
-    /*
-      Compute the derivatives of the occupancies in two cases.
+//     /*
+//       Compute the derivatives of the occupancies in two cases.
 
-      - the atom is pp norm conserving or
+//       - the atom is pp norm conserving or
 
-      - the atom is ppus (in that case the derivative the beta projectors
-      compared to the atomic displacements gives a non zero contribution)
-    */
+//       - the atom is ppus (in that case the derivative the beta projectors
+//       compared to the atomic displacements gives a non zero contribution)
+//     */
 
-    /* temporary wave functions */
-    Wave_functions dphi(kp.gkvec_partition(), this->number_of_hubbard_orbitals(), ctx_.preferred_memory_t(), 1);
-    /* temporary wave functions */
-    Wave_functions phitmp(kp.gkvec_partition(), this->number_of_hubbard_orbitals(), ctx_.preferred_memory_t(), 1);
+//     /* temporary wave functions */
+//     Wave_functions dphi(kp.gkvec_partition(), this->number_of_hubbard_orbitals(), ctx_.preferred_memory_t(), 1);
+//     /* temporary wave functions */
+//     Wave_functions phitmp(kp.gkvec_partition(), this->number_of_hubbard_orbitals(), ctx_.preferred_memory_t(), 1);
 
-    int HowManyBands = kp.num_occupied_bands(0);
-    if (ctx_.num_spins() == 2) {
-        HowManyBands = std::max(kp.num_occupied_bands(1), kp.num_occupied_bands(0));
-    }
-    /*
-      d_phitmp contains the derivatives of the hubbard wave functions
-      corresponding to the displacement r^I_a.
-    */
-    dmatrix<double_complex> dphi_s_psi(HowManyBands, this->number_of_hubbard_orbitals() * ctx_.num_spins());
-    dmatrix<double_complex> phi_s_psi(HowManyBands, this->number_of_hubbard_orbitals() * ctx_.num_spins());
-    mdarray<double_complex, 5> dn_tmp(max_number_of_orbitals_per_atom(),
-                                      max_number_of_orbitals_per_atom(),
-                                      ctx_.num_spins(),
-                                      ctx_.unit_cell().num_atoms(),
-                                      3);
+//     int HowManyBands = kp.num_occupied_bands(0);
+//     if (ctx_.num_spins() == 2) {
+//         HowManyBands = std::max(kp.num_occupied_bands(1), kp.num_occupied_bands(0));
+//     }
+//     /*
+//       d_phitmp contains the derivatives of the hubbard wave functions
+//       corresponding to the displacement r^I_a.
+//     */
+//     dmatrix<double_complex> dphi_s_psi(HowManyBands, this->number_of_hubbard_orbitals() * ctx_.num_spins());
+//     dmatrix<double_complex> phi_s_psi(HowManyBands, this->number_of_hubbard_orbitals() * ctx_.num_spins());
+//     mdarray<double_complex, 5> dn_tmp(max_number_of_orbitals_per_atom(),
+//                                       max_number_of_orbitals_per_atom(),
+//                                       ctx_.num_spins(),
+//                                       ctx_.unit_cell().num_atoms(),
+//                                       3);
 
-    if (ctx_.processing_unit() == device_t::GPU) {
-        dn_tmp.allocate(memory_t::device);
+//     if (ctx_.processing_unit() == device_t::GPU) {
+//         dn_tmp.allocate(memory_t::device);
 
-        /* allocation of the overlap matrices on GPU */
-        phi_s_psi.allocate(memory_t::device);
-        dphi_s_psi.allocate(memory_t::device);
+//         /* allocation of the overlap matrices on GPU */
+//         phi_s_psi.allocate(memory_t::device);
+//         dphi_s_psi.allocate(memory_t::device);
 
-        /* wave functions */
-        phitmp.allocate(spin_range(0), memory_t::device);
-        phi.allocate(spin_range(0), memory_t::device);
-        dphi.allocate(spin_range(0), memory_t::device);
-        phi.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
-        kp.spinor_wave_functions().allocate(spin_range(ctx_.num_spins()), memory_t::device);
-        for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
-            kp.spinor_wave_functions().copy_to(spin_range(ispn), memory_t::device, 0, kp.num_occupied_bands(ispn));
-        }
-    }
-    phi_s_psi.zero(memory_t::host);
-    phi_s_psi.zero(memory_t::device);
+//         /* wave functions */
+//         phitmp.allocate(spin_range(0), memory_t::device);
+//         phi.allocate(spin_range(0), memory_t::device);
+//         dphi.allocate(spin_range(0), memory_t::device);
+//         phi.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
+//         kp.spinor_wave_functions().allocate(spin_range(ctx_.num_spins()), memory_t::device);
+//         for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
+//             kp.spinor_wave_functions().copy_to(spin_range(ispn), memory_t::device, 0, kp.num_occupied_bands(ispn));
+//         }
+//     }
+//     phi_s_psi.zero(memory_t::host);
+//     phi_s_psi.zero(memory_t::device);
 
-    sirius::apply_S_operator<double_complex>(ctx_.processing_unit(), spin_range(0), 0, this->number_of_hubbard_orbitals(),
-                             kp.beta_projectors(), phi, &q_op, dphi);
+//     sirius::apply_S_operator<double_complex>(ctx_.processing_unit(), spin_range(0), 0, this->number_of_hubbard_orbitals(),
+//                              kp.beta_projectors(), phi, &q_op, dphi);
 
-    /* compute <phi^I_m| S | psi_{nk}> */
-    for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
-        inner(ctx_.spla_context(), spin_range(ispn), kp.spinor_wave_functions(), 0, kp.num_occupied_bands(ispn), dphi, 0,
-              this->number_of_hubbard_orbitals(), phi_s_psi, 0, ispn * this->number_of_hubbard_orbitals());
-    }
+//     /* compute <phi^I_m| S | psi_{nk}> */
+//     for (int ispn = 0; ispn < ctx_.num_spins(); ispn++) {
+//         inner(ctx_.spla_context(), spin_range(ispn), kp.spinor_wave_functions(), 0, kp.num_occupied_bands(ispn), dphi, 0,
+//               this->number_of_hubbard_orbitals(), phi_s_psi, 0, ispn * this->number_of_hubbard_orbitals());
+//     }
 
 
-    for (int atom_id = 0; atom_id < ctx_.unit_cell().num_atoms(); atom_id++) {
-        dn_tmp.zero(memory_t::host);
-        dn_tmp.zero(memory_t::device);
-        for (int dir = 0; dir < 3; dir++) {
-            // reset dphi
-            dphi.pw_coeffs(0).prime().zero(memory_t::host);
-            dphi.pw_coeffs(0).prime().zero(memory_t::device);
+//     for (int atom_id = 0; atom_id < ctx_.unit_cell().num_atoms(); atom_id++) {
+//         dn_tmp.zero(memory_t::host);
+//         dn_tmp.zero(memory_t::device);
+//         for (int dir = 0; dir < 3; dir++) {
+//             // reset dphi
+//             dphi.pw_coeffs(0).prime().zero(memory_t::host);
+//             dphi.pw_coeffs(0).prime().zero(memory_t::device);
 
-            if (ctx_.unit_cell().atom(atom_id).type().hubbard_correction()) {
-                // atom atom_id has hubbard correction so we need to compute the
-                // derivatives of the hubbard orbitals associated to the atom
-                // atom_id, the derivatives of the others hubbard orbitals been
-                // zero compared to the displacement of atom atom_id
+//             if (ctx_.unit_cell().atom(atom_id).type().hubbard_correction()) {
+//                 // atom atom_id has hubbard correction so we need to compute the
+//                 // derivatives of the hubbard orbitals associated to the atom
+//                 // atom_id, the derivatives of the others hubbard orbitals been
+//                 // zero compared to the displacement of atom atom_id
 
-                // compute the derivative of |phi> corresponding to the
-                // atom atom_id
-                const int lmax_at = 2 * ctx_.unit_cell().atom(atom_id).type().lo_descriptor_hub(0).l + 1;
+//                 // compute the derivative of |phi> corresponding to the
+//                 // atom atom_id
+//                 const int lmax_at = 2 * ctx_.unit_cell().atom(atom_id).type().lo_descriptor_hub(0).l + 1;
 
-                // compute the derivatives of the hubbard wave functions
-                // |phi_m^J> (J = atom_id) compared to a displacement of atom J.
+//                 // compute the derivatives of the hubbard wave functions
+//                 // |phi_m^J> (J = atom_id) compared to a displacement of atom J.
 
-                kp.compute_gradient_wave_functions(phi, this->offset_[atom_id], lmax_at, phitmp, this->offset_[atom_id], dir);
+//                 kp.compute_gradient_wave_functions(phi, this->offset_[atom_id], lmax_at, phitmp, this->offset_[atom_id], dir);
 
-                if (ctx_.processing_unit() == device_t::GPU) {
-                    phitmp.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
-                }
+//                 if (ctx_.processing_unit() == device_t::GPU) {
+//                     phitmp.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
+//                 }
 
-                /* for norm conserving pp, it is enough to have the derivatives of |phi^J_m> (J = atom_id) */
-                sirius::apply_S_operator<double_complex>(ctx_.processing_unit(), spin_range(0), 0,
-                                                         this->number_of_hubbard_orbitals(), kp.beta_projectors(),
-                                                         phitmp, &q_op, dphi);
-            }
+//                 /* for norm conserving pp, it is enough to have the derivatives of |phi^J_m> (J = atom_id) */
+//                 sirius::apply_S_operator<double_complex>(ctx_.processing_unit(), spin_range(0), 0,
+//                                                          this->number_of_hubbard_orbitals(), kp.beta_projectors(),
+//                                                          phitmp, &q_op, dphi);
+//             }
 
-            // compute d S/ dr^I_a |phi> and add to dphi
-            if (!ctx_.full_potential() && augment) {
-                // it is equal to
-                // \sum Q^I_ij <d \beta^I_i|phi> |\beta^I_j> + < \beta^I_i|phi> |d\beta^I_j>
-                for (int chunk__ = 0; chunk__ < kp.beta_projectors().num_chunks(); chunk__++) {
-                    for (int i = 0; i < kp.beta_projectors().chunk(chunk__).num_atoms_; i++) {
-                        // need to find the right atom in the chunks.
-                        if (kp.beta_projectors().chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::ia), i) == atom_id) {
-                            kp.beta_projectors().generate(chunk__);
-<<<<<<< variant A
-                            bp_grad.generate(chunk__, dir);
->>>>>>> variant B
-                            bp_gen.generate(bp_coeffs, chunk__);
-                            // bp_grad_.generate(chunk__, dir);
-                            bp_grad_gen.generate(bp_grad_coeffs, chunk__, dir);
-======= end
+//             // compute d S/ dr^I_a |phi> and add to dphi
+//             if (!ctx_.full_potential() && augment) {
+//                 // it is equal to
+//                 // \sum Q^I_ij <d \beta^I_i|phi> |\beta^I_j> + < \beta^I_i|phi> |d\beta^I_j>
+//                 for (int chunk__ = 0; chunk__ < kp.beta_projectors().num_chunks(); chunk__++) {
+//                     for (int i = 0; i < kp.beta_projectors().chunk(chunk__).num_atoms_; i++) {
+//                         // need to find the right atom in the chunks.
+//                         if (kp.beta_projectors().chunk(chunk__).desc_(static_cast<int>(beta_desc_idx::ia), i) == atom_id) {
+//                             kp.beta_projectors().generate(chunk__);
+// <<<<<<< variant A
+//                             bp_grad.generate(chunk__, dir);
+// >>>>>>> variant B
+//                             bp_gen.generate(bp_coeffs, chunk__);
+//                             // bp_grad_.generate(chunk__, dir);
+//                             bp_grad_gen.generate(bp_grad_coeffs, chunk__, dir);
+// ======= end
 
-                            // compute Q_ij <\beta_i|\phi> |d \beta_j> and add it to d\phi
-                            {
-                                /* <beta | phi> for this chunk */
-<<<<<<< variant A
-                                auto beta_phi = kp.beta_projectors().inner<double_complex>(chunk__, phi, 0, 0,
-                                                                                           this->number_of_hubbard_orbitals());
-                                q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_grad, beta_phi);
->>>>>>> variant B
-                                auto beta_phi =
-                                    inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
-                                                          ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
-                                                          bp_coeffs, phi, 0 /* ispn */, 0, this->number_of_hubbard_orbitals());
-                                // auto beta_phi = kp.beta_projectors().inner<double_complex>(chunk__, phi, 0, 0,
-                                //                                                            this->number_of_hubbard_orbitals());
-                                q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_grad_, bp_grad_coeffs, beta_phi);
-======= end
-                            }
+//                             // compute Q_ij <\beta_i|\phi> |d \beta_j> and add it to d\phi
+//                             {
+//                                 /* <beta | phi> for this chunk */
+// <<<<<<< variant A
+//                                 auto beta_phi = kp.beta_projectors().inner<double_complex>(chunk__, phi, 0, 0,
+//                                                                                            this->number_of_hubbard_orbitals());
+//                                 q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_grad, beta_phi);
+// >>>>>>> variant B
+//                                 auto beta_phi =
+//                                     inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
+//                                                           ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
+//                                                           bp_coeffs, phi, 0 /* ispn */, 0, this->number_of_hubbard_orbitals());
+//                                 // auto beta_phi = kp.beta_projectors().inner<double_complex>(chunk__, phi, 0, 0,
+//                                 //                                                            this->number_of_hubbard_orbitals());
+//                                 q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_grad_, bp_grad_coeffs, beta_phi);
+// ======= end
+//                             }
 
-                            // compute Q_ij <d \beta_i|\phi> |\beta_j> and add it to d\phi
-                            {
-                                /* <dbeta | phi> for this chunk */
-<<<<<<< variant A
-                                auto dbeta_phi = bp_grad.inner<double_complex>(chunk__, phi, 0, 0,
-                                                                                this->number_of_hubbard_orbitals());
->>>>>>> variant B
-                                // auto dbeta_phi = bp_grad_.inner<double_complex>(chunk__, phi, 0, 0,
-                                //                                                 this->number_of_hubbard_orbitals());
-                                auto dbeta_phi  = inner<double_complex>(
-                                    ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
-                                    ctx_.mem_pool(device_t::CPU), bp_grad_coeffs, phi, 0 /* ispn */, 0,
-                                    this->number_of_hubbard_orbitals());
-======= end
+//                             // compute Q_ij <d \beta_i|\phi> |\beta_j> and add it to d\phi
+//                             {
+//                                 /* <dbeta | phi> for this chunk */
+// <<<<<<< variant A
+//                                 auto dbeta_phi = bp_grad.inner<double_complex>(chunk__, phi, 0, 0,
+//                                                                                 this->number_of_hubbard_orbitals());
+// >>>>>>> variant B
+//                                 // auto dbeta_phi = bp_grad_.inner<double_complex>(chunk__, phi, 0, 0,
+//                                 //                                                 this->number_of_hubbard_orbitals());
+//                                 auto dbeta_phi  = inner<double_complex>(
+//                                     ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
+//                                     ctx_.mem_pool(device_t::CPU), bp_grad_coeffs, phi, 0 /* ispn */, 0,
+//                                     this->number_of_hubbard_orbitals());
+// ======= end
 
-                                /* apply Q operator (diagonal in spin) */
-                                /* Effectively compute Q_ij <d beta_i| phi> |beta_j> and add it dphi */
-                                q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(),
-                                           kp.beta_projectors(), bp_coeffs, dbeta_phi);
-                            }
-                        }
-                    }
-                }
-            }
+//                                 /* apply Q operator (diagonal in spin) */
+//                                 /* Effectively compute Q_ij <d beta_i| phi> |beta_j> and add it dphi */
+//                                 q_op.apply(chunk__, i, 0, dphi, 0, this->number_of_hubbard_orbitals(),
+//                                            kp.beta_projectors(), bp_coeffs, dbeta_phi);
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
 
-            compute_occupancies(kp,
-                                phi_s_psi,
-                                dphi,
-                                dn_tmp,
-                                dir);
-        } // direction x, y, z
+//             compute_occupancies(kp,
+//                                 phi_s_psi,
+//                                 dphi,
+//                                 dn_tmp,
+//                                 dir);
+//         } // direction x, y, z
 
-        /* use a memcpy here */
-        std::memcpy(dn__.at(memory_t::host, 0, 0, 0, 0, 0, atom_id), dn_tmp.at(memory_t::host),
-                    sizeof(double_complex) * dn_tmp.size());
-    } // atom_id
+//         /* use a memcpy here */
+//         std::memcpy(dn__.at(memory_t::host, 0, 0, 0, 0, 0, atom_id), dn_tmp.at(memory_t::host),
+//                     sizeof(double_complex) * dn_tmp.size());
+//     } // atom_id
 
-    if (ctx_.processing_unit() == device_t::GPU) {
-        phi.deallocate(spin_range(0), memory_t::device);
-        kp.spinor_wave_functions().deallocate(spin_range(ctx_.num_spins()), memory_t::device);
-    }
+//     if (ctx_.processing_unit() == device_t::GPU) {
+//         phi.deallocate(spin_range(0), memory_t::device);
+//         kp.spinor_wave_functions().deallocate(spin_range(ctx_.num_spins()), memory_t::device);
+//     }
 }
 
 void
 Hubbard::compute_occupancies_stress_derivatives(K_point& kp__, Q_operator& q_op__, mdarray<double_complex, 5>& dn__)
 {
-    PROFILE("sirius::Hubbard::compute_occupancies_stress_derivatives");
+  throw std::runtime_error("compute_occupancies_stress_derivatives not yet merged");
+//     PROFILE("sirius::Hubbard::compute_occupancies_stress_derivatives");
 
-    /* this is the original atomic wave functions without the operator S applied */
-    auto& phi = kp__.atomic_wave_functions_hub();
+//     /* this is the original atomic wave functions without the operator S applied */
+//     auto& phi = kp__.atomic_wave_functions_hub();
 
-    /*
-      dphi contains this
+//     /*
+//       dphi contains this
 
-      \f[
-      \left| d \phi\right> = \partial_{\mu\nu} (S \left| \phi \right>)
-      ]
+//       \f[
+//       \left| d \phi\right> = \partial_{\mu\nu} (S \left| \phi \right>)
+//       ]
 
-    */
-    Wave_functions dphi(kp__.gkvec_partition(), phi.num_wf(), ctx_.preferred_memory_t(), 1);
+//     */
+//     Wave_functions dphi(kp__.gkvec_partition(), phi.num_wf(), ctx_.preferred_memory_t(), 1);
 
-    Wave_functions phitmp(kp__.gkvec_partition(), phi.num_wf(), ctx_.preferred_memory_t(), 1);
+//     Wave_functions phitmp(kp__.gkvec_partition(), phi.num_wf(), ctx_.preferred_memory_t(), 1);
 
-    Beta_projectors_strain_deriv bp_strain_deriv(ctx_, kp__.gkvec(), kp__.igk_loc());
+//     Beta_projectors_strain_deriv bp_strain_deriv(ctx_, kp__.gkvec(), kp__.igk_loc());
 
-    /* maximum number of occupied bands */
-    int nbnd = (ctx_.num_mag_dims() == 1) ? std::max(kp__.num_occupied_bands(0), kp__.num_occupied_bands(1))
-                                          : kp__.num_occupied_bands(0);
+//     /* maximum number of occupied bands */
+//     int nbnd = (ctx_.num_mag_dims() == 1) ? std::max(kp__.num_occupied_bands(0), kp__.num_occupied_bands(1))
+//                                           : kp__.num_occupied_bands(0);
 
-    bool augment = ctx_.unit_cell().augment();
+//     bool augment = ctx_.unit_cell().augment();
 
-    const int lmax  = ctx_.unit_cell().lmax();
-    const int lmmax = utils::lmmax(lmax);
+//     const int lmax  = ctx_.unit_cell().lmax();
+//     const int lmmax = utils::lmmax(lmax);
 
-    sddk::mdarray<double, 2> rlm_g(lmmax, kp__.num_gkvec_loc());
-    sddk::mdarray<double, 3> rlm_dg(lmmax, 3, kp__.num_gkvec_loc());
+//     sddk::mdarray<double, 2> rlm_g(lmmax, kp__.num_gkvec_loc());
+//     sddk::mdarray<double, 3> rlm_dg(lmmax, 3, kp__.num_gkvec_loc());
 
-    /* overlap between psi_nk and phi_ik <psi|S|phi> */
-    dmatrix<double_complex> psi_s_phi(nbnd, phi.num_wf() * ctx_.num_spinors());
+//     /* overlap between psi_nk and phi_ik <psi|S|phi> */
+//     dmatrix<double_complex> psi_s_phi(nbnd, phi.num_wf() * ctx_.num_spinors());
 
-    /* initialize the beta projectors and derivatives */
-<<<<<<< variant A
-    bp_strain_deriv.prepare();
->>>>>>> variant B
-    //kp__.beta_projectors().prepare();
-    auto strain_deriv_coeffs = bp_strain_deriv.prepare();
-    auto strain_deriv_generator = bp_strain_deriv.make_generator();
+//     /* initialize the beta projectors and derivatives */
+// <<<<<<< variant A
+//     bp_strain_deriv.prepare();
+// >>>>>>> variant B
+//     //kp__.beta_projectors().prepare();
+//     auto strain_deriv_coeffs = bp_strain_deriv.prepare();
+//     auto strain_deriv_generator = bp_strain_deriv.make_generator();
 
-    auto beta_coeffs = kp__.beta_projectors().prepare();
-    auto beta_generator = kp__.beta_projectors().make_generator();
-======= end
+//     auto beta_coeffs = kp__.beta_projectors().prepare();
+//     auto beta_generator = kp__.beta_projectors().make_generator();
+// ======= end
 
-    auto sr = spin_range(ctx_.num_spins() == 2 ? 2 : 0);
-    kp__.spinor_wave_functions().prepare(sr, true);
-    kp__.atomic_wave_functions_S_hub().prepare(sr, true);
-    kp__.atomic_wave_functions_hub().prepare(sr, true);
+//     auto sr = spin_range(ctx_.num_spins() == 2 ? 2 : 0);
+//     kp__.spinor_wave_functions().prepare(sr, true);
+//     kp__.atomic_wave_functions_S_hub().prepare(sr, true);
+//     kp__.atomic_wave_functions_hub().prepare(sr, true);
 
 
-    if (ctx_.processing_unit() == device_t::GPU) {
-        psi_s_phi.allocate(memory_t::device);
+//     if (ctx_.processing_unit() == device_t::GPU) {
+//         psi_s_phi.allocate(memory_t::device);
 
-        dphi.allocate(spin_range(0), memory_t::device);
+//         dphi.allocate(spin_range(0), memory_t::device);
 
-        phitmp.allocate(spin_range(0), memory_t::device);
-    }
+//         phitmp.allocate(spin_range(0), memory_t::device);
+//     }
 
-    /* compute <psi_nk | S | phi_mk>
-     * treat non-magnetic, collinear and non-collinear cases;
-     * in collinear case psi_s_phi contains two blocks for up- and dn- spin channels */
-    for (int is = 0; is < ctx_.num_spinors(); is++) {
-        auto sr = ctx_.num_mag_dims() == 3 ? spin_range(2) : spin_range(is);
+//     /* compute <psi_nk | S | phi_mk>
+//      * treat non-magnetic, collinear and non-collinear cases;
+//      * in collinear case psi_s_phi contains two blocks for up- and dn- spin channels */
+//     for (int is = 0; is < ctx_.num_spinors(); is++) {
+//         auto sr = ctx_.num_mag_dims() == 3 ? spin_range(2) : spin_range(is);
 
-        inner(ctx_.spla_context(), sr, kp__.spinor_wave_functions(), 0, kp__.num_occupied_bands(is),
-            kp__.atomic_wave_functions_S_hub(), 0, kp__.atomic_wave_functions_S_hub().num_wf(),
-            psi_s_phi, 0, is * kp__.atomic_wave_functions_S_hub().num_wf());
-    }
+//         inner(ctx_.spla_context(), sr, kp__.spinor_wave_functions(), 0, kp__.num_occupied_bands(is),
+//             kp__.atomic_wave_functions_S_hub(), 0, kp__.atomic_wave_functions_S_hub().num_wf(),
+//             psi_s_phi, 0, is * kp__.atomic_wave_functions_S_hub().num_wf());
+//     }
 
-    /* array of real spherical harmonics and derivatives for each G-vector */
-    #pragma omp parallel for schedule(static)
-    for (int igkloc = 0; igkloc < kp__.num_gkvec_loc(); igkloc++) {
-        /* gvs = {r, theta, phi} */
-        auto gvc = kp__.gkvec().gkvec_cart<index_domain_t::local>(igkloc);
-        auto rtp = SHT::spherical_coordinates(gvc);
+//     /* array of real spherical harmonics and derivatives for each G-vector */
+//     #pragma omp parallel for schedule(static)
+//     for (int igkloc = 0; igkloc < kp__.num_gkvec_loc(); igkloc++) {
+//         /* gvs = {r, theta, phi} */
+//         auto gvc = kp__.gkvec().gkvec_cart<index_domain_t::local>(igkloc);
+//         auto rtp = SHT::spherical_coordinates(gvc);
 
-        sf::spherical_harmonics(lmax, rtp[1], rtp[2], &rlm_g(0, igkloc));
-        sddk::mdarray<double, 2> rlm_dg_tmp(&rlm_dg(0, 0, igkloc), lmmax, 3);
-        sf::dRlm_dr(lmax, gvc, rlm_dg_tmp);
-    }
+//         sf::spherical_harmonics(lmax, rtp[1], rtp[2], &rlm_g(0, igkloc));
+//         sddk::mdarray<double, 2> rlm_dg_tmp(&rlm_dg(0, 0, igkloc), lmmax, 3);
+//         sf::dRlm_dr(lmax, gvc, rlm_dg_tmp);
+//     }
 
-    /* the expressions below assume that the hubbard wave-functions are actually non-orthogonalised,
-       spin-independent atomic orbiatals */
+//     /* the expressions below assume that the hubbard wave-functions are actually non-orthogonalised,
+//        spin-independent atomic orbiatals */
 
-    for (int nu = 0; nu < 3; nu++) {
-        for (int mu = 0; mu < 3; mu++) {
+//     for (int nu = 0; nu < 3; nu++) {
+//         for (int mu = 0; mu < 3; mu++) {
 
-            // compute the derivatives of all hubbard wave functions
-            // |phi_m^J> compared to the strain
+//             // compute the derivatives of all hubbard wave functions
+//             // |phi_m^J> compared to the strain
 
-            /* Compute derivatives of Hubbard atomic functions w.r.t. lattice strain:
-             * - the functions indexing is compatible with K_point::generate_atomic_wave_functions();
-             * - only non-orthogonal atomic orbitals are handled
-             * - S operator is not applied
-             */
-            wavefunctions_strain_deriv(kp__, phitmp, rlm_g, rlm_dg, nu, mu);
+//             /* Compute derivatives of Hubbard atomic functions w.r.t. lattice strain:
+//              * - the functions indexing is compatible with K_point::generate_atomic_wave_functions();
+//              * - only non-orthogonal atomic orbitals are handled
+//              * - S operator is not applied
+//              */
+//             wavefunctions_strain_deriv(kp__, phitmp, rlm_g, rlm_dg, nu, mu);
 
-            ///* ths phitmp functions are non-magnetic at the moment, so copy spin-up channel to spin dn;
-            // * this is done in order to have a general case of spin-dependent Hubbard orbitals */
-            //if (ctx_.num_spins() == 2) {
-            //    phitmp.copy_from(device_t::CPU, phitmp.num_wf(), phitmp, 0, 0, 1, (ctx_.num_mag_dims() == 3) ? phitmp.num_wf() : 0);
-            //}
+//             ///* ths phitmp functions are non-magnetic at the moment, so copy spin-up channel to spin dn;
+//             // * this is done in order to have a general case of spin-dependent Hubbard orbitals */
+//             //if (ctx_.num_spins() == 2) {
+//             //    phitmp.copy_from(device_t::CPU, phitmp.num_wf(), phitmp, 0, 0, 1, (ctx_.num_mag_dims() == 3) ? phitmp.num_wf() : 0);
+//             //}
 
-            /* Just to keep in mind:
-             *
-             * - kp.hubbard_wave_functions() are the hubbard functions with S applied
-             * - kp.atomic_wave_functions_S_hub() are the non-orthogonal (initial) atomic functions with S applied
-             * - kp.atomic_wave_functions_hub() are the non-orthogonal (initial) atomic functions
-             * - both sets are spin-dependent, even if the orbitals have no spin label
-             * - atom_type.indexr_hub() is the new index of Hubbard radial functions
-             * - atom_type.indexb_hub() is the new index of Hubbard orbitals (radial function times a spherical harmonic)
-             * - wavefunctions_strain_deriv() and K_point::generate_atomic_wave_functions() work with the new indices
-             */
+//             /* Just to keep in mind:
+//              *
+//              * - kp.hubbard_wave_functions() are the hubbard functions with S applied
+//              * - kp.atomic_wave_functions_S_hub() are the non-orthogonal (initial) atomic functions with S applied
+//              * - kp.atomic_wave_functions_hub() are the non-orthogonal (initial) atomic functions
+//              * - both sets are spin-dependent, even if the orbitals have no spin label
+//              * - atom_type.indexr_hub() is the new index of Hubbard radial functions
+//              * - atom_type.indexb_hub() is the new index of Hubbard orbitals (radial function times a spherical harmonic)
+//              * - wavefunctions_strain_deriv() and K_point::generate_atomic_wave_functions() work with the new indices
+//              */
 
-            if (ctx_.processing_unit() == device_t::GPU) {
-               phitmp.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
-            }
+//             if (ctx_.processing_unit() == device_t::GPU) {
+//                phitmp.copy_to(spin_range(0), memory_t::device, 0, this->number_of_hubbard_orbitals());
+//             }
 
-            /* dphi is the strain derivative of the hubbard orbitals (with S applied). Derivation imply this
+//             /* dphi is the strain derivative of the hubbard orbitals (with S applied). Derivation imply this
 
-<<<<<<< variant A
-               d(S phi) = (dS) phi + S (d\phi) = (d\phi) - \sum_{ij} Q_{ij} |beta_i><beta_j| d(phi) -
-               \sum_{ij} Q_{ij} |d beta_i><beta_j|phi> - \sum_{ij} Q_{ij} |beta_i><d beta_j|phi>
->>>>>>> variant B
-            if (!ctx_.full_potential() && augment) {
-                for (int i = 0; i < kp__.beta_projectors().num_chunks(); i++) {
-                    /* generate beta-projectors for a block of atoms */
-                    // kp__.beta_projectors().generate(i);
-                    beta_generator.generate(beta_coeffs, i);
-                    /* generate derived beta-projectors for a block of atoms */
-                    // bp_strain_deriv.generate(i, 3 * nu + mu);
-                    strain_deriv_generator.generate(strain_deriv_coeffs, i, 3 * nu + mu);
+// <<<<<<< variant A
+//                d(S phi) = (dS) phi + S (d\phi) = (d\phi) - \sum_{ij} Q_{ij} |beta_i><beta_j| d(phi) -
+//                \sum_{ij} Q_{ij} |d beta_i><beta_j|phi> - \sum_{ij} Q_{ij} |beta_i><d beta_j|phi>
+// >>>>>>> variant B
+//             if (!ctx_.full_potential() && augment) {
+//                 for (int i = 0; i < kp__.beta_projectors().num_chunks(); i++) {
+//                     /* generate beta-projectors for a block of atoms */
+//                     // kp__.beta_projectors().generate(i);
+//                     beta_generator.generate(beta_coeffs, i);
+//                     /* generate derived beta-projectors for a block of atoms */
+//                     // bp_strain_deriv.generate(i, 3 * nu + mu);
+//                     strain_deriv_generator.generate(strain_deriv_coeffs, i, 3 * nu + mu);
 
-                    {
-                        /* <d phi | beta> */
-                        // auto beta_dphi = kp__.beta_projectors().inner<double_complex>(
-                        //     i, phitmp, 0, 0, this->number_of_hubbard_orbitals());
-                        auto beta_dphi =
-                            inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
-                                                  ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
-                                                  beta_coeffs, phitmp, 0, 0, this->number_of_hubbard_orbitals());
+//                     {
+//                         /* <d phi | beta> */
+//                         // auto beta_dphi = kp__.beta_projectors().inner<double_complex>(
+//                         //     i, phitmp, 0, 0, this->number_of_hubbard_orbitals());
+//                         auto beta_dphi =
+//                             inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
+//                                                   ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
+//                                                   beta_coeffs, phitmp, 0, 0, this->number_of_hubbard_orbitals());
 
-                            /* apply Q operator (diagonal in spin) */
-                            q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), kp__.beta_projectors(),
-                                         beta_coeffs, beta_dphi);
-                    }
+//                             /* apply Q operator (diagonal in spin) */
+//                             q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), kp__.beta_projectors(),
+//                                          beta_coeffs, beta_dphi);
+//                     }
 
-                    {
-                        /* <phi | d beta> */
-                        auto dbeta_phi = inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
-                                                               ctx_.mem_pool(device_t::CPU), strain_deriv_coeffs, phi, 0, 0,
-                                                               this->number_of_hubbard_orbitals());
-                        // auto dbeta_phi = bp_strain_deriv.inner<double_complex>(i,
-                        //                                                        phi,
-                        //                                                        0, 0,
-                        //                                                        this->number_of_hubbard_orbitals());
-                        /* apply Q operator (diagonal in spin) */
-                        q_op__.apply(i, 0,
-                                     dphi, 0,
-                                     this->number_of_hubbard_orbitals(),
-                                     kp__.beta_projectors(),
-                                     beta_coeffs,
-                                     dbeta_phi);
-                    }
-======= end
+//                     {
+//                         /* <phi | d beta> */
+//                         auto dbeta_phi = inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(), ctx_.preferred_memory_t(),
+//                                                                ctx_.mem_pool(device_t::CPU), strain_deriv_coeffs, phi, 0, 0,
+//                                                                this->number_of_hubbard_orbitals());
+//                         // auto dbeta_phi = bp_strain_deriv.inner<double_complex>(i,
+//                         //                                                        phi,
+//                         //                                                        0, 0,
+//                         //                                                        this->number_of_hubbard_orbitals());
+//                         /* apply Q operator (diagonal in spin) */
+//                         q_op__.apply(i, 0,
+//                                      dphi, 0,
+//                                      this->number_of_hubbard_orbitals(),
+//                                      kp__.beta_projectors(),
+//                                      beta_coeffs,
+//                                      dbeta_phi);
+//                     }
+// ======= end
 
-<<<<<<< variant A
-               dphi contains the full expression phitmp contains (d phi).
-            */
->>>>>>> variant B
-                    {
-                        /* non-collinear case */
-                        // auto beta_phi = kp__.beta_projectors().inner<double_complex>(i,
-                        //                                                              phi,
-                        //                                                              0,
-                        //                                                              0,
-                        //                                                              this->number_of_hubbard_orbitals());
-                        auto beta_phi =
-                            inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
-                                                  ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
-                                                  beta_coeffs,
-                                                  phitmp, 0, 0, this->number_of_hubbard_orbitals());
-======= end
+// <<<<<<< variant A
+//                dphi contains the full expression phitmp contains (d phi).
+//             */
+// >>>>>>> variant B
+//                     {
+//                         /* non-collinear case */
+//                         // auto beta_phi = kp__.beta_projectors().inner<double_complex>(i,
+//                         //                                                              phi,
+//                         //                                                              0,
+//                         //                                                              0,
+//                         //                                                              this->number_of_hubbard_orbitals());
+//                         auto beta_phi =
+//                             inner<double_complex>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
+//                                                   ctx_.preferred_memory_t(), ctx_.mem_pool(device_t::CPU),
+//                                                   beta_coeffs,
+//                                                   phitmp, 0, 0, this->number_of_hubbard_orbitals());
+// ======= end
 
-<<<<<<< variant A
-            dphi.copy_from(ctx_.processing_unit(), this->number_of_hubbard_orbitals(), phitmp, 0, 0, 0, 0);
->>>>>>> variant B
-                        /* apply Q operator (diagonal in spin) */
-                        q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_strain_deriv, strain_deriv_coeffs, beta_phi);
-                    }
-                }
-            }
-======= end
+// <<<<<<< variant A
+//             dphi.copy_from(ctx_.processing_unit(), this->number_of_hubbard_orbitals(), phitmp, 0, 0, 0, 0);
+// >>>>>>> variant B
+//                         /* apply Q operator (diagonal in spin) */
+//                         q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_strain_deriv, strain_deriv_coeffs, beta_phi);
+//                     }
+//                 }
+//             }
+// ======= end
 
-            // dphi = |phitmp> - \sum_{ij} Q_{ij} | beta_i><beta_j|phitmp> + |d beta_i><beta_j|phi> + |beta_i><d beta_j|phi>
-            // dphi = (1 - \sum_{ij} Q_{ij} | beta_i><beta_j|) |phitmp> - (sum_{ij} Q_{ij} |d beta_i><beta_j|  + |beta_i><d beta_j|) | phi>
+//             // dphi = |phitmp> - \sum_{ij} Q_{ij} | beta_i><beta_j|phitmp> + |d beta_i><beta_j|phi> + |beta_i><d beta_j|phi>
+//             // dphi = (1 - \sum_{ij} Q_{ij} | beta_i><beta_j|) |phitmp> - (sum_{ij} Q_{ij} |d beta_i><beta_j|  + |beta_i><d beta_j|) | phi>
 
-            if (!ctx_.full_potential() && augment) {
-               for (int i = 0; i < kp__.beta_projectors().num_chunks(); i++) {
-                   /* generate beta-projectors for a block of atoms */
-                   kp__.beta_projectors().generate(i);
-                   /* generate derived beta-projectors for a block of atoms */
-                   bp_strain_deriv.generate(i, 3 * nu + mu);
+//             if (!ctx_.full_potential() && augment) {
+//                for (int i = 0; i < kp__.beta_projectors().num_chunks(); i++) {
+//                    /* generate beta-projectors for a block of atoms */
+//                    kp__.beta_projectors().generate(i);
+//                    /* generate derived beta-projectors for a block of atoms */
+//                    bp_strain_deriv.generate(i, 3 * nu + mu);
 
-                   /* basically apply the second term of the S projector to
-                    * phitmp = (strain derivatives of the original atomic
-                    * orbitals )*/
-                   {
-                       /* < beta | dphi > */
-                       auto beta_dphi = kp__.beta_projectors().inner<double_complex>(i,
-                                                                                     phitmp, // contains the strain derivative of the hubbard orbitals.
-                                                                                     0, 0,
-                                                                                     this->number_of_hubbard_orbitals());
-                       /* apply Q operator (diagonal in spin) */
+//                    /* basically apply the second term of the S projector to
+//                     * phitmp = (strain derivatives of the original atomic
+//                     * orbitals )*/
+//                    {
+//                        /* < beta | dphi > */
+//                        auto beta_dphi = kp__.beta_projectors().inner<double_complex>(i,
+//                                                                                      phitmp, // contains the strain derivative of the hubbard orbitals.
+//                                                                                      0, 0,
+//                                                                                      this->number_of_hubbard_orbitals());
+//                        /* apply Q operator (diagonal in spin) */
 
-                       // compute Q_{ij}<beta_i | dphi> |beta_j> and add it to dphi
-                       q_op__.apply(i, 0,
-                                    dphi, 0,
-                                    this->number_of_hubbard_orbitals(),
-                                    kp__.beta_projectors(),
-                                    beta_dphi);
-                   }
+//                        // compute Q_{ij}<beta_i | dphi> |beta_j> and add it to dphi
+//                        q_op__.apply(i, 0,
+//                                     dphi, 0,
+//                                     this->number_of_hubbard_orbitals(),
+//                                     kp__.beta_projectors(),
+//                                     beta_dphi);
+//                    }
 
-                   {
-                       /* <d(beta) | phi> */
-                       auto dbeta_phi = bp_strain_deriv.inner<double_complex>(i,
-                                                                              phi,
-                                                                              0, 0,
-                                                                              this->number_of_hubbard_orbitals());
-                       /* apply Q operator (diagonal in spin) */
+//                    {
+//                        /* <d(beta) | phi> */
+//                        auto dbeta_phi = bp_strain_deriv.inner<double_complex>(i,
+//                                                                               phi,
+//                                                                               0, 0,
+//                                                                               this->number_of_hubbard_orbitals());
+//                        /* apply Q operator (diagonal in spin) */
 
-                       // compute <d (beta) | phi> |beta> and add it to dphi
-                       q_op__.apply(i, 0,
-                                    dphi, 0,
-                                    this->number_of_hubbard_orbitals(),
-                                    kp__.beta_projectors(),
-                                    dbeta_phi);
-                   }
+//                        // compute <d (beta) | phi> |beta> and add it to dphi
+//                        q_op__.apply(i, 0,
+//                                     dphi, 0,
+//                                     this->number_of_hubbard_orbitals(),
+//                                     kp__.beta_projectors(),
+//                                     dbeta_phi);
+//                    }
 
-                   {
-                       // <beta|phi> |d beta>
-                       auto beta_phi = kp__.beta_projectors().inner<double_complex>(i,
-                                                                                    phi,
-                                                                                    0,
-                                                                                    0,
-                                                                                    this->number_of_hubbard_orbitals());
-                       /* apply Q operator (diagonal in spin) */
-                       q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_strain_deriv, beta_phi);
-                   }
-               }
-            }
-            compute_occupancies(kp__, psi_s_phi, dphi, dn__, 3 * nu + mu);
-        }
-    }
+//                    {
+//                        // <beta|phi> |d beta>
+//                        auto beta_phi = kp__.beta_projectors().inner<double_complex>(i,
+//                                                                                     phi,
+//                                                                                     0,
+//                                                                                     0,
+//                                                                                     this->number_of_hubbard_orbitals());
+//                        /* apply Q operator (diagonal in spin) */
+//                        q_op__.apply(i, 0, dphi, 0, this->number_of_hubbard_orbitals(), bp_strain_deriv, beta_phi);
+//                    }
+//                }
+//             }
+//             compute_occupancies(kp__, psi_s_phi, dphi, dn__, 3 * nu + mu);
+//         }
+//     }
 
-    kp__.spinor_wave_functions().dismiss(sr, false);
-    kp__.atomic_wave_functions_S_hub().dismiss(sr, false);
-    kp__.atomic_wave_functions_hub().dismiss(sr, false);
+//     kp__.spinor_wave_functions().dismiss(sr, false);
+//     kp__.atomic_wave_functions_S_hub().dismiss(sr, false);
+//     kp__.atomic_wave_functions_hub().dismiss(sr, false);
 }
 
 void
