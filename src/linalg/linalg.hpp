@@ -30,7 +30,7 @@
 #include "gpu/acc_blas.hpp"
 #include "gpu/acc_lapack.hpp"
 #endif
-#if defined (__MAGMA) && defined(__GPU)
+#if defined (SIRIUS_MAGMA) && defined(SIRIUS_GPU)
 #include "gpu/magma.hpp"
 #endif
 #include "blas_lapack.h"
@@ -259,7 +259,7 @@ inline void linalg::axpy(int n, ftn_double_complex const* alpha, ftn_double_comp
             FORTRAN(zaxpy)(&n, alpha, x, &incx, y, &incy);
             break;
         }
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
         case linalg_t::gpublas: {
             accblas::zaxpy(n, reinterpret_cast<const acc_complex_double_t*>(alpha),
                            reinterpret_cast<const acc_complex_double_t*>(x), incx,
@@ -575,7 +575,7 @@ linalg::hbmv(char uplo, ftn_int n, ftn_int k, ftn_double_complex alpha, const ft
              &beta, y, &incy);
             break;
         }
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
         case linalg_t::gpublas: {
             accblas::zhbmv(
                 uplo, n, k, reinterpret_cast<acc_complex_double_t const*>(&alpha),
@@ -855,7 +855,7 @@ inline int linalg::getrf<ftn_double_complex>(ftn_int m, ftn_int n, ftn_double_co
             return info;
             break;
         }
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
         case linalg_t::gpublas: {
             return acclapack::getrf(m, n, reinterpret_cast<acc_complex_double_t*>(A), ipiv, lda);
             break;
@@ -904,7 +904,7 @@ inline int linalg::getrs<ftn_double_complex>(char trans, ftn_int n, ftn_int nrhs
             return info;
             break;
         }
-#if defined (__GPU)
+#if defined (SIRIUS_GPU)
         case linalg_t::gpublas: {
             return acclapack::getrs(trans, n, nrhs, reinterpret_cast<const acc_complex_double_t*>(A), lda, ipiv, reinterpret_cast<acc_complex_double_t*>(B), ldb);
             break;

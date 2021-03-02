@@ -284,7 +284,7 @@ class Beta_projectors_base
 //                 break;
 //             }
 //             case device_t::GPU: {
-// #if defined(__GPU)
+// #if defined(SIRIUS_GPU)
 //                 auto& desc = chunk(ichunk__).desc_;
 //                 create_beta_gk_gpu(chunk(ichunk__).num_atoms_, num_gkvec_loc(), desc.at(memory_t::device),
 //                                    pw_coeffs_t_.at(memory_t::device, 0, 0, j__), gkvec_coord_.at(memory_t::device),

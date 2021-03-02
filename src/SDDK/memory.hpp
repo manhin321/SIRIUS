@@ -1304,7 +1304,7 @@ class mdarray
 
     T* device_data()
     {
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
         assert(raw_ptr_device_ != nullptr);
         return raw_ptr_device_;
 #else
@@ -1315,7 +1315,7 @@ class mdarray
 
     const T* device_data() const
     {
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
         assert(raw_ptr_device_ != nullptr);
         return raw_ptr_device_;
 #else

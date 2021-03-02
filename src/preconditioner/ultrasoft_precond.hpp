@@ -52,7 +52,7 @@ DiagonalPreconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const s
             }
             break;
         }
-#ifdef __GPU
+#ifdef SIRIUS_GPU
         case device_t::GPU: {
             d_.allocate(memory_t::device);
             d_.copy_to(memory_t::device);
@@ -265,7 +265,7 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
     q_op.rmatmul(R, bphi, ispn, pm, -1);
 
 //     if (ctx_.processing_unit() == device_t::GPU) {
-// #ifdef __GPU
+// #ifdef SIRIUS_GPU
 //         // allocate bphi on gpu if needed
 //         bphi.allocate(ctx_.mem_pool(ctx_.processing_unit()));
 //         Y.allocate(ctx_.mem_pool(ctx_.processing_unit()));
@@ -292,7 +292,7 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
                           &linalg_const<numeric_t>::one(), Y.at(memory_t::host), Y.ld());
                 break;
             }
-#ifdef __GPU
+#ifdef SIRIUS_GPU
             case device_t::GPU:
                 linalg(linalg_t::gpublas)
                     .gemm('N', 'N', m, n, k, &linalg_const<numeric_t>::one(),

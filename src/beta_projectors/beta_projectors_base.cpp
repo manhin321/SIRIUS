@@ -45,7 +45,7 @@ namespace sirius {
 //               beta_phi__.at(preferred_memory_t), beta_phi__.ld());
 
 //     if (pp && comm.rank() == 0) {
-// #ifdef __GPU
+// #ifdef SIRIUS_GPU
 //         if (linalg_t__ == linalg_t::gpublas) {
 //             acc::sync_stream(stream_id(-1));
 //         }
@@ -76,7 +76,7 @@ local_inner_aux(linalg_t linalg_t__, memory_t preferred_memory_t, const T* beta_
               beta_phi__.at(preferred_memory_t), beta_phi__.ld());
 
     if (pp && comm.rank() == 0) {
-#ifdef __GPU
+#ifdef SIRIUS_GPU
         if (linalg_t__ == linalg_t::gpublas) {
             acc::sync_stream(stream_id(-1));
         }
@@ -732,7 +732,7 @@ beta_projectors_generate_gpu(beta_projectors_coeffs_t& out, const mdarray<double
 {
     int num_gkvec_loc = igk__.size();
     PROFILE("sirius::Beta_projectors_base::generate");
-#if defined(__GPU)
+#if defined(SIRIUS_GPU)
     auto& desc = beta_chunk.desc_;
     create_beta_gk_gpu(beta_chunk.num_atoms_, num_gkvec_loc, desc.at(memory_t::device),
                        pw_coeffs_t_device.at(memory_t::device, 0, 0, j__), gkvec_coord_.at(memory_t::device),

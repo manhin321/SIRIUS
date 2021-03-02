@@ -1159,7 +1159,7 @@ class Eigensolver_scalapack : public Eigensolver
 };
 #endif
 
-#if defined(SIRIUS_MAGMA) && defined(__GPU)
+#if defined(SIRIUS_MAGMA) && defined(SIRIUS_GPU)
 class Eigensolver_magma: public Eigensolver
 {
   public:

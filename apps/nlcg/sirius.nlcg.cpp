@@ -1,8 +1,7 @@
 #include "utils/profiler.hpp"
 #include <sirius.hpp>
 #include <utils/json.hpp>
-#include "nlcglib/adaptor.hpp"
-#include <nlcglib/nlcglib.hpp>
+#include "nlcglib/call_nlcg.hpp"
 
 using namespace sirius;
 using json = nlohmann::json;
@@ -74,57 +73,13 @@ double ground_state(Simulation_context& ctx,
     auto result = dft.find(inp.density_tol(), inp.energy_tol(), initial_tol, inp.num_dft_iter(), write_state);
 
     auto& nlcg_params  = ctx.cfg().nlcg();
-    double temp       = nlcg_params.T();
-    double tol        = nlcg_params.tol();
-    double kappa      = nlcg_params.kappa();
-    double tau        = nlcg_params.tau();
-    int maxiter       = nlcg_params.maxiter();
-    int restart       = nlcg_params.restart();
-
-    std::string smear = ctx.cfg().parameters().smearing();
-    auto pu = ctx.processing_unit();
-    Energy energy(*kset, density, potential);
-
-    nlcglib::smearing_type smearing;
-    if (smear.compare("fermi_dirac") == 0) {
-        smearing = nlcglib::smearing_type::FERMI_DIRAC;
-    } else if (smear.compare("gaussian_spline") == 0) {
-        smearing = nlcglib::smearing_type::GAUSSIAN_SPLINE;
-    } else {
-        throw std::runtime_error("invalid smearing type given");
-    }
-
-    if (is_device_memory(ctx.preferred_memory_t())) {
-        switch (pu) {
-            case device_t::GPU: {
-                std::cout << "nlcg executing on gpu-gpu" << "\n";
-                nlcglib::nlcg_mvp2_device(energy, smearing, temp, tol, kappa, tau, maxiter, restart);
-                break;
-            }
-            case device_t::CPU: {
-                std::cout << "nlcg executing on gpu-cpu" << "\n";
-                nlcglib::nlcg_mvp2_device_cpu(energy, smearing, temp, tol, kappa, tau, maxiter, restart);
-                break;
-            }
-        }
-    } else {
-        switch (pu) {
-            case device_t::CPU: {
-                std::cout << "nlcg executing on cpu-cpu" << "\n";
-                nlcglib::nlcg_mvp2_cpu(energy, smearing, temp, tol, kappa, tau, maxiter, restart);
-                break;
-            }
-            case device_t::GPU: {
-                std::cout << "nlcg executing on cpu-gpu" << "\n";
-                nlcglib::nlcg_mvp2_cpu_device(energy, smearing, temp, tol, kappa, tau, maxiter, restart);
-                break;
-            }
-        }
-    }
-
     if (ctx.cfg().control().verification() >= 1) {
         dft.check_scf_density();
     }
+
+    Energy energy(*kset, density, potential);
+
+    call_nlcg(ctx, nlcg_params, energy, *kset, potential);
 
     //dft.print_magnetic_moment();
 
