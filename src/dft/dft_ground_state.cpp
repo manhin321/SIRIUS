@@ -83,7 +83,7 @@ double DFT_ground_state::energy_kin_sum_pw() const
 
 double DFT_ground_state::total_energy() const
 {
-    return sirius::total_energy(ctx_, kset_, density_, potential_, ewald_energy_) + this->scf_energy_;
+    return sirius::total_energy(ctx_, kset_, density_, potential_, ewald_energy_) + kset_.entropy_sum() + this->scf_energy_;
 }
 
 json DFT_ground_state::serialize()
