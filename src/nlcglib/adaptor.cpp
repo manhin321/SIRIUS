@@ -190,7 +190,7 @@ void Energy::compute()
 
     // evaluate total energy
     double eewald = ewald_energy(ctx, ctx.gvec(), ctx.unit_cell());
-    this->etot    = total_energy(ctx, kset, density, potential, eewald);
+    this->etot    = ks_energy(ctx, kset, density, potential, eewald);
     // auto comps = total_energy_components(ctx, kset, density, potential, eewald);
     // for (auto elem : comps) {
     //     std::cout << elem.first << " " << std::setprecision(12) << elem.second  << "\n";

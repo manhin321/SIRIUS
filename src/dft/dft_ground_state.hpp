@@ -138,6 +138,8 @@ class DFT_ground_state
 
     double total_energy() const;
 
+    double ks_energy() const;
+
     /// Generate initial density, potential and a subspace of wave-functions.
     void initial_state();
 

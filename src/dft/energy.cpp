@@ -145,7 +145,7 @@ double energy_kin(Simulation_context const& ctx, K_point_set const& kset, Densit
            energy_bxc(density, potential);
 }
 
-double total_energy(Simulation_context const& ctx, K_point_set const& kset, Density const& density,
+double ks_energy(Simulation_context const& ctx, K_point_set const& kset, Density const& density,
                     Potential const& potential, double ewald_energy)
 {
     double tot_en{0};
@@ -172,6 +172,14 @@ double total_energy(Simulation_context const& ctx, K_point_set const& kset, Dens
 
     return tot_en;
 }
+
+double total_energy(Simulation_context const& ctx, K_point_set const& kset, Density const& density,
+                    Potential const& potential, double ewald_energy)
+{
+    return ks_energy(ctx, kset, density, potential, ewald_energy) + kset.entropy_sum();
+}
+
+
 
 std::map<std::string, double>
 total_energy_components(Simulation_context const& ctx, K_point_set const& kset, Density const& density,

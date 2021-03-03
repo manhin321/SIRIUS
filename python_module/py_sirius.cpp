@@ -479,10 +479,12 @@ PYBIND11_MODULE(py_sirius, m)
         .def("initial_state", &DFT_ground_state::initial_state)
         //.def("print_magnetic_moment", &DFT_ground_state::print_magnetic_moment)
         .def("total_energy", &DFT_ground_state::total_energy)
-        .def("serialize", [](DFT_ground_state& dft) {
-            auto json = dft.serialize();
-            return pj_convert(json);
-        })
+        .def("ks_energy", &DFT_ground_state::ks_energy)
+        .def("serialize",
+             [](DFT_ground_state& dft) {
+                 auto json = dft.serialize();
+                 return pj_convert(json);
+             })
         .def("density", &DFT_ground_state::density, py::return_value_policy::reference)
         .def(
             "find",

@@ -83,7 +83,13 @@ double DFT_ground_state::energy_kin_sum_pw() const
 
 double DFT_ground_state::total_energy() const
 {
-    return sirius::total_energy(ctx_, kset_, density_, potential_, ewald_energy_) + kset_.entropy_sum() + this->scf_energy_;
+    return sirius::total_energy(ctx_, kset_, density_, potential_, ewald_energy_) + this->scf_energy_;
+}
+
+double
+DFT_ground_state::ks_energy() const
+{
+    return sirius::ks_energy(ctx_, kset_, density_, potential_, ewald_energy_) + this->scf_energy_;
 }
 
 json DFT_ground_state::serialize()
@@ -258,7 +264,7 @@ json DFT_ground_state::find(double density_tol, double energy_tol, double initia
                 rms, etot - eold);
         /* check if the calculation has converged */
         if (std::abs(eold - etot) < energy_tol && rms < density_tol) {
-            ctx_.message(1, __function_name__,"converged after %i SCF iterations!\n", iter + 1); 
+            ctx_.message(1, __function_name__,"\nconverged after %i SCF iterations!\n", iter + 1);
             num_iter = iter;
             break;
         }
