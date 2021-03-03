@@ -105,6 +105,12 @@ inline double entropy(double x__, double width__)
         return 0.0;
     }
     double f = 1.0 / (1.0 + std::exp(t));
+    if (1-f < 1e-16) {
+        return width__ * f * std::log(f);
+    }
+    if (f < 1e-16) {
+        return width__ * (1 - f) * std::log(1 - f);
+    }
     return width__ * ((1 - f) * std::log(1 - f) + f * std::log(f));
 }
 
