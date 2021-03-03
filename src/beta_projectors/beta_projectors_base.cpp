@@ -595,7 +595,7 @@ beta_projectors_coeffs_t Beta_projectors_base::prepare(memory_t pm) const
         beta_storage.__pw_coeffs_a_buffer =
             matrix<double_complex>(num_gkvec_loc(), max_num_beta(), ctx_.mem_pool(memory_t::device));
         beta_storage.__pw_coeffs_a_g0_buffer = mdarray<double_complex, 1>(max_num_beta(), ctx_.mem_pool(memory_t::host));
-        beta_storage.__pw_coeffs_a_g0_buffer.allocate(ctx_.mem_pool(memory_t::device));
+        beta_storage.__pw_coeffs_a_g0_buffer.allocate(ctx_.mem_pool(memory_t::host));
     }
 
     return beta_storage;
@@ -771,8 +771,8 @@ void Beta_projector_generator::generate(beta_projectors_coeffs_t &out, int ichun
         case device_t::GPU: {
             out.pw_coeffs_a =
                 sddk::matrix<double_complex>(nullptr, out.__pw_coeffs_a_buffer.device_data(), gk_size, num_beta);
-            out.pw_coeffs_a_g0 =
-                sddk::mdarray<double_complex, 1>(nullptr, out.__pw_coeffs_a_g0_buffer.device_data(), num_beta);
+            // g0 coefficients reside in host memory
+            out.pw_coeffs_a_g0 = sddk::mdarray<double_complex, 1>(out.__pw_coeffs_a_g0_buffer.host_data(), nullptr, num_beta);
 
             beta_projectors_generate_gpu(out, pw_coeffs_t_device_, pw_coeffs_t_host_, ctx_, gkvec_, gkvec_coord_, beta_chunks_[ichunk__], igk_, j__);
             break;
@@ -802,7 +802,8 @@ Beta_projector_generator::generate(beta_projectors_coeffs_t& out, int ichunk__, 
             // view of internal buffer with correct number of cols (= num_beta)
             out.pw_coeffs_a =
                 sddk::matrix<double_complex>(nullptr, out.__pw_coeffs_a_buffer.device_data(), gk_size, num_beta);
-            out.pw_coeffs_a_g0 = sddk::mdarray<double_complex, 1>(nullptr, out.__pw_coeffs_a_g0_buffer.device_data(), num_beta);
+            // g0 coefficients reside in host memory
+            out.pw_coeffs_a_g0 = sddk::mdarray<double_complex, 1>(out.__pw_coeffs_a_g0_buffer.host_data(), nullptr, num_beta);
 
             beta_projectors_generate_gpu(out, pw_coeffs_t_device_, pw_coeffs_t_host_, ctx_, gkvec_, gkvec_coord_,
                                          beta_chunks_[ichunk__], igk_, j__);
