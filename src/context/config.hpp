@@ -1402,7 +1402,10 @@ class config_t
         /// nlcg processing unit
         inline auto processing_unit() const
         {
-            return dict_.at("/nlcg/processing_unit"_json_pointer).get<std::string>();
+            if(dict_.contains("/nlcg/processing_unit")) {
+                return dict_.at("/nlcg/processing_unit"_json_pointer).get<std::string>();
+            }
+            return dict_.at("/control/processing_unit"_json_pointer).get<std::string>();
         }
 
         // inline auto processing_unit
