@@ -1,7 +1,7 @@
 #ifndef ACC_LAPACK_H
 #define ACC_LAPACK_H
 
-#if defined (__CUDA)
+#if defined (SIRIUS_CUDA)
 
 #include "cusolver.hpp"
 #include "acc_blas.hpp"
