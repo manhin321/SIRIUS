@@ -1610,6 +1610,10 @@ void
 copy(mdarray<T, N>& dst, const mdarray<T, N>& src, device_t device)
 {
     // TODO add also check shapes
+    if(src.size() == 0) {
+        // nothing TODO
+        return;
+    }
     assert(src.size() == dst.size());
     if (device == device_t::GPU) {
         assert(src.on_device() && dst.on_device());
