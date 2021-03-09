@@ -337,5 +337,9 @@ void Potential::generate(Density const& density__)
     }
 }
 
+void Potential::set_qe_energies(double ehart, double etxc, double vtxc, double eth, double etotefield)
+{
+    qe_energies_ = qe_energies{ehart, etxc, vtxc, eth, etotefield};
 }
 
+}

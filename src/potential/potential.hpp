@@ -27,6 +27,7 @@
 
 #include "density/density.hpp"
 #include "hubbard/hubbard.hpp"
+#include "qe_energies.hpp"
 
 namespace sirius {
 
@@ -162,6 +163,8 @@ class Potential : public Field4D
     /// Add extra charge to the density.
     /** This is used to verify the variational derivative of Exc w.r.t. magnetisation mag */
     double add_delta_mag_xc_{0};
+
+    qe_energies qe_energies_;
 
     void init_PAW();
 
@@ -850,6 +853,9 @@ class Potential : public Field4D
 
     double energy_vha() const
     {
+        if(ctx_.veff_callback()) {
+            return qe_energies_.ehart;
+        }
         return energy_vha_;
     }
 
@@ -886,6 +892,9 @@ class Potential : public Field4D
     /// Integral of \f$ \rho({\bf r}) V^{XC}({\bf r}) \f$.
     double energy_vxc(Density const& density__) const
     {
+        if (ctx_.veff_callback()) {
+            return qe_energies_.vtxc;
+        }
         return inner(density__.rho(), xc_potential());
     }
 
@@ -898,6 +907,10 @@ class Potential : public Field4D
     /// Integral of \f$ \rho({\bf r}) \epsilon^{XC}({\bf r}) \f$.
     double energy_exc(Density const& density__) const
     {
+        if (ctx_.veff_callback()) {
+            return qe_energies_.etxc;
+        }
+
         double exc = (1 + add_delta_rho_xc_) * inner(density__.rho(), xc_energy_density());
         if (!ctx_.full_potential()) {
             exc += (1 + add_delta_rho_xc_) * inner(density__.rho_pseudo_core(), xc_energy_density());
@@ -932,6 +945,8 @@ class Potential : public Field4D
     {
         return *U_;
     }
+
+    void set_qe_energies(double ehart, double etxc, double vtxc, double eth, double etotefield);
 };
 
 }; // namespace sirius

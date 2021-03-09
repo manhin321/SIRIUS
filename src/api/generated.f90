@@ -6102,3 +6102,56 @@ deallocate(smearing_c_type)
 deallocate(processing_unit_c_type)
 end subroutine sirius_nlcg_params
 
+!
+!> @brief set qe energies in potential (when using veff callback)
+!> @param [in] handler Ground state handler
+!> @param [in] ehart hartree energy
+!> @param [in] etxc xc energy
+!> @param [in] vtxc vxc energy
+!> @param [in] eth hubbard contribution
+!> @param [in] etotefield external field contribution
+subroutine set_qe_energies(handler,ehart,etxc,vtxc,eth,etotefield)
+implicit none
+!
+type(C_PTR), target, intent(in) :: handler
+real(8), target, intent(in) :: ehart
+real(8), target, intent(in) :: etxc
+real(8), target, intent(in) :: vtxc
+real(8), target, intent(in) :: eth
+real(8), target, intent(in) :: etotefield
+!
+type(C_PTR) :: handler_ptr
+type(C_PTR) :: ehart_ptr
+type(C_PTR) :: etxc_ptr
+type(C_PTR) :: vtxc_ptr
+type(C_PTR) :: eth_ptr
+type(C_PTR) :: etotefield_ptr
+!
+interface
+subroutine set_qe_energies_aux(handler,ehart,etxc,vtxc,eth,etotefield)&
+&bind(C, name="set_qe_energies")
+use, intrinsic :: ISO_C_BINDING
+type(C_PTR), value :: handler
+type(C_PTR), value :: ehart
+type(C_PTR), value :: etxc
+type(C_PTR), value :: vtxc
+type(C_PTR), value :: eth
+type(C_PTR), value :: etotefield
+end subroutine
+end interface
+!
+handler_ptr = C_NULL_PTR
+handler_ptr = C_LOC(handler)
+ehart_ptr = C_NULL_PTR
+ehart_ptr = C_LOC(ehart)
+etxc_ptr = C_NULL_PTR
+etxc_ptr = C_LOC(etxc)
+vtxc_ptr = C_NULL_PTR
+vtxc_ptr = C_LOC(vtxc)
+eth_ptr = C_NULL_PTR
+eth_ptr = C_LOC(eth)
+etotefield_ptr = C_NULL_PTR
+etotefield_ptr = C_LOC(etotefield)
+call set_qe_energies_aux(handler_ptr,ehart_ptr,etxc_ptr,vtxc_ptr,eth_ptr,etotefield_ptr)
+end subroutine set_qe_energies
+

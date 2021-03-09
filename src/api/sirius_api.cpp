@@ -6181,4 +6181,49 @@ void sirius_nlcg_params(void* const* handler__,
 #endif
 }
 
+/*
+@api begin
+set_qe_energies:
+  doc: set qe energies in potential (when using veff callback)
+  arguments:
+    handler:
+      type: void*
+      attr: in, required
+      doc: Ground state handler
+    ehart:
+      type: double
+      attr: in, required
+      doc: hartree energy
+    etxc:
+      type: double
+      attr: in, required
+      doc: xc energy
+    vtxc:
+      type: double
+      attr: in, required
+      doc: vxc energy
+    eth:
+      type: double
+      attr: in, required
+      doc: hubbard contribution
+    etotefield:
+      type: double
+      attr: in, required
+      doc: external field contribution
+@api end
+*/
+
+void
+set_qe_energies(void* const* handler__,
+                double const* ehart,
+                double const* etxc,
+                double const* vtxc,
+                double const* eth,
+                double const* etotefield)
+{
+    auto& gs        = get_gs(handler__);
+    auto& potential = gs.potential();
+    potential.set_qe_energies(*ehart, *etxc, *vtxc, *eth, *etotefield);
+}
+
 } // extern "C"
