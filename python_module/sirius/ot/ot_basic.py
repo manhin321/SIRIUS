@@ -20,7 +20,7 @@ def pp_total_energy(potential, density, k_point_set, ctx):
     unit_cell = ctx.unit_cell()
     # TODO: Ewald energy is constant...
     return (k_point_set.valence_eval_sum() - potential.energy_vxc(density) -
-            potential.PAW_one_elec_energy() - 0.5 * potential.energy_vha() -
+            potential.PAW_one_elec_energy(density) - 0.5 * potential.energy_vha() -
             energy_bxc(density, potential) + potential.energy_exc(density) +
             potential.PAW_total_energy() + ewald_energy(ctx, gvec, unit_cell))
 
@@ -96,7 +96,7 @@ class Energy:
                 # print(np.real(ek), end=' ')
                 self.kpointset[k].set_band_energy(j, ispn, np.real(ek))
             # print('\n')
-        self.kpointset.sync_band_energies()
+        self.kpointset.sync_band("energy")
 
         Etot = pp_total_energy(self.potential, self.density,
                                self.kpointset, self.ctx)
