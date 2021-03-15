@@ -12,7 +12,7 @@ from ..operators import US_Precond, Sinv_operator, S_operator
 
 from ..helpers import save_state
 from ..logger import Logger
-from ..py_sirius import magnetization, sprint_magnetization
+from ..py_sirius import sprint_magnetization
 from .ortho import loewdin
 from .preconditioner import IdentityPreconditioner
 import time
