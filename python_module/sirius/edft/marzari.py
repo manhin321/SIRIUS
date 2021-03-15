@@ -14,6 +14,7 @@ from ..helpers import save_state
 from ..logger import Logger
 from .smearing import Smearing
 from .preconditioner import IdentityPreconditioner
+from ..operators import US_Precond, Sinv_operator, S_operator
 
 kb = (physical_constants['Boltzmann constant in eV/K'][0] /
       physical_constants['Hartree energy in eV'][0])
@@ -159,6 +160,18 @@ class CG:
         self.free_energy = free_energy
         self.T = free_energy.T
 
+        # ultrasoft
+        kset = self.M.energy.kpointset
+        potential = self.M.energy.potential
+        ctx = kset.ctx()
+        self.is_ultrasoft = np.any([type.augment for type in kset.ctx().unit_cell().atom_types])
+        if self.is_ultrasoft:
+            self.Si = Sinv_operator(ctx, potential, kset)
+            self.S = S_operator(ctx, potential, kset)
+            self.K = US_Precond(ctx, potential, kset)
+        else:
+            self.S = None
+
     def run(self, X, fn,
             maxiter=100,
             ncgrestart=20,
@@ -183,13 +196,23 @@ class CG:
         F, Hx = self.free_energy(X, fn)
         logger('initial free energy: %.10f' % F)
 
-        HX = Hx * kw
-        XhKHXF = X.H @ (K @ HX)
-        XhKX = X.H @ (K @ X)
-        LL = _solve(XhKX, XhKHXF)
+        if self.is_ultrasoft:
+            K = self.K
+            # TODO cleanup signature of run and don't pass the preconditioner anymore
 
-        g_X = HX * fn - X @ LL
-        dX = -K * (HX - X @ LL) / kw
+        HX = Hx * kw
+
+        # Lagrange multipliers
+        if self.is_ultrasoft:
+            SX = self.S @ X
+        else:
+            SX = X
+        XhKHX = SX.H @ (K @ HX)
+        XhKX = SX.H @ (K @ SX)
+        LL = _solve(XhKX, XhKHX)
+
+        g_X = HX * fn - SX @ LL
+        dX = -(K @ (HX - SX @ LL) / kw)
         G_X = dX
 
         for i in range(maxiter):
@@ -251,23 +274,37 @@ class CG:
         kw = self.free_energy.energy.kpointset.w
         # compute new search direction
         HX = Hx * kw
-        XhKHXF = X.H @ (K @ HX)
-        XhKX = X.H @ (K @ X)
-        LL = _solve(XhKX, XhKHXF)
+
+        # Lagrange multipliers
+        if self.is_ultrasoft:
+            SX = self.S @ X
+        else:
+            SX = X
+        XhKHX = SX.H @ (K @ HX)
+        XhKX = SX.H @ (K @ SX)
+        LL = _solve(XhKX, XhKHX)
 
         # previous search directions (including subspace rotation)
         gXp = g_X @ U
         GXp = G_X @ U
         dXp = dX @ U
 
-        g_X = HX * fn - X @ LL
-        dX = -K * (HX - X @ LL) / kw
+        g_X = HX * fn - SX @ LL
+        dX = -(K @ (HX - SX @ LL) / kw)
         # conjugate directions
         if restart:
             beta_cg = 0
             G_X = dX
         else:
+
             beta_cg = max(0, np.real(inner(g_X, dX)) / np.real(inner(gXp, dXp)))
+            if self.is_ultrasoft:
+                gLL = _solve(X.H @ (self.S @ SX), X.H @ (self.S @ GXp))
+                G_X = dX + beta_cg * (GXp - SX@gLL)
+            else:
+                gLL = X.H@GXp
+                G_X = dX + beta_cg * (GXp - X@gLL)
+
             G_X = dX + beta_cg * (GXp - X @ (X.H @ GXp))
 
         logger('beta_cg: %.6f' % beta_cg)
@@ -303,7 +340,7 @@ class CG:
             _dt = 1e-7
             fx = T(_dt)
             slope_fd = (fx.F - F0) / _dt
-            logger('VERRBOSE slope: %.6f, slope_fd: %.6f'  % (slope, slope_fd))
+            logger('VERRBOSE slope: %.6f, slope_fd: %.6f' % (slope, slope_fd))
         b = slope
         c = F0
         while True:
