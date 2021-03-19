@@ -59,7 +59,8 @@ Spherical_Bessel_functions::Spherical_Bessel_functions(int lmax__,
     std::vector<double> jl(lmax__ + 2);
     for (int ir = 0; ir < rgrid__.num_points(); ir++) {
         double t = rgrid__[ir] * q__;
-        custom_bessel(lmax__ + 1, t, &jl[0]);
+        // custom_bessel(lmax__ + 1, t, &jl[0]);
+        gsl_sf_bessel_jl_array(lmax__ + 1, t, &jl[0]);
         for (int l = 0; l <= lmax__ + 1; l++) {
             sbessel_[l](ir) = jl[l];
         }
