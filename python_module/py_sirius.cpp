@@ -189,13 +189,22 @@ PYBIND11_MODULE(py_sirius, m)
 
     py::class_<Communicator>(m, "Communicator");
 
-    // py::class_<Simulation_parameters>(m, "Simulation_parameters")
-    //     .def("mem_pool_by_mem_t", py::overload_cast<sddk::memory_t>(&Simulation_parameters::mem_pool, py::const_),
-    //          py::return_value_policy::reference)
-    //     .def("mem_pool_by_dev_t", py::overload_cast<sddk::device_t>(&Simulation_parameters::mem_pool),
-    //          py::return_value_policy::reference);
+    py::class_<Simulation_parameters>(m, "Simulation_parameters")
+        .def_property_readonly("cfg", py::overload_cast<>(&Simulation_parameters::cfg, py::const_));
 
-    py::class_<Simulation_context/* , Simulation_parameters */>(m, "Simulation_context")
+    py::class_<config_t>(m, "config_t").def_property_readonly("parameters", py::overload_cast<>(&config_t::parameters));
+    py::class_<Config, config_t>(m, "Config");
+
+    py::class_<config_t::settings_t>(m, "settings_t");
+    py::class_<config_t::parameters_t>(m, "parameters_t")
+        .def_property_readonly("density_tol", py::overload_cast<>(&config_t::parameters_t::density_tol, py::const_))
+        .def_property_readonly("energy_tol", py::overload_cast<>(&config_t::parameters_t::energy_tol, py::const_))
+        .def_property_readonly("use_symmetry", py::overload_cast<>(&config_t::parameters_t::use_symmetry, py::const_))
+        .def_property_readonly("shiftk", py::overload_cast<>(&config_t::parameters_t::shiftk, py::const_))
+        .def_property_readonly("ngridk", py::overload_cast<>(&config_t::parameters_t::ngridk, py::const_));
+
+
+    py::class_<Simulation_context, Simulation_parameters>(m, "Simulation_context")
         .def(py::init<std::string const&>())
         .def(py::init<std::string const&, Communicator const&>(), py::keep_alive<1, 3>())
         .def("initialize", &Simulation_context::initialize)
@@ -230,14 +239,18 @@ PYBIND11_MODULE(py_sirius, m)
         .def("use_symmetry", py::overload_cast<>(&Simulation_context::use_symmetry, py::const_))
         .def("preferred_memory_t", &Simulation_context::preferred_memory_t)
         //.def("mixer_input", &Simulation_context::mixer_input)
-        .def("comm", [](Simulation_context& obj) { return make_pycomm(obj.comm()); },
-             py::return_value_policy::reference_internal)
-        .def("comm_k", [](Simulation_context& obj) { return make_pycomm(obj.comm_k()); },
-             py::return_value_policy::reference_internal)
-        .def("comm_fft", [](Simulation_context& obj) { return make_pycomm(obj.comm_fft()); },
-             py::return_value_policy::reference_internal)
+        .def(
+            "comm", [](Simulation_context& obj) { return make_pycomm(obj.comm()); },
+            py::return_value_policy::reference_internal)
+        .def(
+            "comm_k", [](Simulation_context& obj) { return make_pycomm(obj.comm_k()); },
+            py::return_value_policy::reference_internal)
+        .def(
+            "comm_fft", [](Simulation_context& obj) { return make_pycomm(obj.comm_fft()); },
+            py::return_value_policy::reference_internal)
         .def("iterative_solver_tolerance", py::overload_cast<double>(&Simulation_context::iterative_solver_tolerance))
-        .def("iterative_solver_tolerance", py::overload_cast<>(&Simulation_context::iterative_solver_tolerance, py::const_));
+        .def("iterative_solver_tolerance",
+             py::overload_cast<>(&Simulation_context::iterative_solver_tolerance, py::const_));
 
     py::class_<Atom>(m, "Atom")
         .def("position", &Atom::position)
