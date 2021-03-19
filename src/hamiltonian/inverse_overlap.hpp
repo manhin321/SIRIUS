@@ -95,7 +95,6 @@ InverseS_k<numeric_t>::initialize(const Beta_projectors_base& beta_projectors)
         if (preferred_memory == memory_t::device) {
             B.allocate(memory_t::host).copy_to(memory_t::host);
         }
-        std::cout << "B.checksum (initialize invSK): " << B.checksum() << "\n";
     }
 
     sddk::matrix<numeric_t> BQ(B.size(0), q_op.size(1));
@@ -123,8 +122,6 @@ InverseS_k<numeric_t>::initialize(const Beta_projectors_base& beta_projectors)
     ipiv = mdarray<int, 1>(n);
     // compute LU factorization, TODO: use GPU if needed
     linalg(linalg_t::lapack).getrf(n, n, LU.at(memory_t::host), LU.ld(), ipiv.at(memory_t::host));
-
-    std::cout << "InvSK LU checksum: " << LU.checksum() << std::endl;
 
     // copy LU factorization to device if needed
     // LU is always computed on host

@@ -827,8 +827,6 @@ sddk::matrix<double_complex> inner_beta(const Beta_projectors_base& beta, const 
 
         sddk::matrix<double_complex> out(size, size, preferred_memory);
 
-        std::cout << "num_beta_chunks: " << num_beta_chunks << "\n";
-
         double_complex one  = double_complex(1);
         double_complex zero = double_complex(0);
 
