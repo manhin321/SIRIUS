@@ -8,7 +8,7 @@ Conjugate gradient method for Marzari, Vanderbilt, Payne:
 from collections import namedtuple
 from scipy.constants import physical_constants
 import numpy as np
-from ..coefficient_array import diag, inner, spdiag
+from ..coefficient_array import diag, inner, spdiag, ones_like
 from .ortho import loewdin
 from ..helpers import save_state
 from ..logger import Logger
@@ -77,7 +77,7 @@ class LineEvaluator():
     Evaluate free energy along a fixed direction.
     """
 
-    def __init__(self, X, fn, M, G_X):
+    def __init__(self, X, fn, M, G_X, overlap):
         """
         Keyword Arguments:
         X     -- plane-wave coefficients
@@ -90,6 +90,7 @@ class LineEvaluator():
         self.M = M
         # search direction
         self.G_X = G_X
+        self.overlap = overlap
 
     def __call__(self, t):
         """
@@ -103,7 +104,7 @@ class LineEvaluator():
         fn -- occupation numbers
         """
         X_new = self.X + t * self.G_X
-        X = loewdin(X_new)
+        X = loewdin(X_new, self.overlap)
 
         Point = namedtuple('Point', ['F', 'Hx', 'X', 'fn'])
 
@@ -161,8 +162,8 @@ class CG:
         self.T = free_energy.T
 
         # ultrasoft
-        kset = self.M.energy.kpointset
-        potential = self.M.energy.potential
+        kset = self.free_energy.energy.kpointset
+        potential = self.free_energy.energy.potential
         ctx = kset.ctx()
         self.is_ultrasoft = np.any([type.augment for type in kset.ctx().unit_cell().atom_types])
         if self.is_ultrasoft:
@@ -219,7 +220,7 @@ class CG:
             try:
                 X, fn, F, Hx, slope_X = self.stepX(X, fn, F, G_X, g_X, tol=tol)
             except (StepError, SlopeError) as e:
-                fline = LineEvaluator(X=X, fn=fn, M=self.free_energy, G_X=G_X)
+                fline = LineEvaluator(X=X, fn=fn, M=self.free_energy, G_X=G_X, overlap=self.S)
                 res = fline(0)
                 F = res.F
 
@@ -296,7 +297,6 @@ class CG:
             beta_cg = 0
             G_X = dX
         else:
-
             beta_cg = max(0, np.real(inner(g_X, dX)) / np.real(inner(gXp, dXp)))
             if self.is_ultrasoft:
                 gLL = _solve(X.H @ (self.S @ SX), X.H @ (self.S @ GXp))
@@ -319,7 +319,7 @@ class CG:
             logger('slope_X: %.4e' % slope)
             raise SlopeError
 
-        line_eval = LineEvaluator(X, fn, self.free_energy, G_X)
+        line_eval = LineEvaluator(X=X, fn=fn, M=self.free_energy, G_X=G_X, overlap=self.S)
 
         try:
             X, fn, F, Hx = self.stepX_quadratic(F0, line_eval, slope)
@@ -386,7 +386,6 @@ class CG:
         return fx.X, fx.fn, fx.F, fx.Hx
 
     def step_fn(self, X, fn, tol, num_iter=2):
-        from ..coefficient_array import ones_like
 
         kset = self.free_energy.energy.kpointset
         kw = kset.w
