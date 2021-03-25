@@ -29,6 +29,7 @@
 #include "mixer/mixer_factory.hpp"
 #include "utils/profiler.hpp"
 #include "SDDK/wf_inner.hpp"
+#include "SDDK/serialize_mdarray.hpp"
 
 namespace sirius {
 
@@ -1353,7 +1354,7 @@ mdarray<double_complex, 2> Density::generate_rho_aug()
         int nbf = atom_type.mt_basis_size();
 
         /* convert to real matrix */
-        auto dm = density_matrix_aux(iat);
+        auto dm = density_matrix_aux(this->density_matrix(), iat);
 
         if (ctx_.cfg().control().print_checksum()) {
             auto cs = dm.checksum();
@@ -1362,8 +1363,8 @@ mdarray<double_complex, 2> Density::generate_rho_aug()
             }
         }
         /* treat auxiliary array as double with x2 size */
-        mdarray<double, 2> dm_pw(nbf * (nbf + 1) / 2, spl_ngv_loc.local_size() * 2, ctx_.mem_pool(memory_t::host));
-        mdarray<double, 2> phase_factors(atom_type.num_atoms(), spl_ngv_loc.local_size() * 2,
+        sddk::mdarray<double, 2> dm_pw(nbf * (nbf + 1) / 2, spl_ngv_loc.local_size() * 2, ctx_.mem_pool(memory_t::host));
+        sddk::mdarray<double, 2> phase_factors(atom_type.num_atoms(), spl_ngv_loc.local_size() * 2,
                                          ctx_.mem_pool(memory_t::host));
 
         ctx_.print_memory_usage(__FILE__, __LINE__);
@@ -1764,7 +1765,8 @@ Density::get_magnetisation() const
     return std::make_tuple(total_mag, it_mag, mt_mag);
 }
 
-mdarray<double, 3> Density::density_matrix_aux(int iat__)
+sddk::mdarray<double, 3>
+Density::density_matrix_aux(sddk::mdarray<double_complex, 4> const& dm__, int iat__) const
 {
     auto& atom_type = unit_cell_.atom_type(iat__);
     int nbf         = atom_type.mt_basis_size();
