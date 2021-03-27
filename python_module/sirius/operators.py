@@ -1,15 +1,25 @@
 from .py_sirius import InverseS_k, S_k, Precond_us, Hamiltonian0
 from .coefficient_array import threaded
+from scipy.sparse.linalg import LinearOperator
 import numpy as np
 
 
-class S_operator:
+class KpointOperatorBase:
+    def __init__(self):
+        """"""
+        self.ops = {}
+
+    def __getitem__(self, key):
+        return NotImplemented
+
+
+class S_operator(KpointOperatorBase):
     """
     Description: computes  S|ψ〉
     """
 
     def __init__(self, ctx, potential, kpointset):
-        self.ops = {}
+        super().__init__()
         hamiltonian0 = Hamiltonian0(potential)
         for ik, kp in enumerate(kpointset):
             for ispn in range(ctx.num_spins()):
@@ -24,15 +34,21 @@ class S_operator:
             out[key] = np.array(self.ops[key].apply(np.asfortranarray(cn[key])))
         return out
 
+    def __getitem__(self, key):
+        def _matvec(X):
+            return np.array(self.ops[key].apply(np.asfortranarray(X)))
+        n = self.ops[key].size
+        return LinearOperator(dtype=np.complex, shape=(n, n), matvec=_matvec, rmatvec=_matvec)
+
     def __matmul__(self, cn):
         return self.apply(cn)
 
 
-class Sinv_operator:
+class Sinv_operator(KpointOperatorBase):
     """Description: computes S⁻¹|ψ〉"""
 
     def __init__(self, ctx, potential, kpointset):
-        self.ops = {}
+        super().__init__()
         hamiltonian0 = Hamiltonian0(potential)
         for ik, kp in enumerate(kpointset):
             for ispn in range(ctx.num_spins()):
@@ -46,11 +62,17 @@ class Sinv_operator:
             out[key] = np.array(self.ops[key].apply(np.asfortranarray(cn[key])))
         return out
 
+    def __getitem__(self, key):
+        def _matvec(X):
+            return np.array(self.ops[key].apply(np.asfortranarray(X)))
+        n = self.ops[key].size
+        return LinearOperator(dtype=np.complex, shape=(n, n), matvec=_matvec, rmatvec=_matvec)
+
     def __matmul__(self, cn):
         return self.apply(cn)
 
 
-class US_Precond:
+class US_Precond(KpointOperatorBase):
     """
     Description: ultrasoft preconditioner
 
@@ -60,7 +82,7 @@ class US_Precond:
     """
 
     def __init__(self, ctx, potential, kpointset):
-        self.ops = {}
+        super().__init__()
         hamiltonian0 = Hamiltonian0(potential)
         for ik, kp in enumerate(kpointset):
             for ispn in range(ctx.num_spins()):
@@ -73,6 +95,12 @@ class US_Precond:
         for key in cn.keys():
             out[key] = np.array(self.ops[key].apply(np.asfortranarray(cn[key])))
         return out
+
+    def __getitem__(self, key):
+        def _matvec(X):
+            return np.array(self.ops[key].apply(np.asfortranarray(X)))
+        n = self.ops[key].size
+        return LinearOperator(dtype=np.complex, shape=(n, n), matvec=_matvec, rmatvec=_matvec)
 
     def __matmul__(self, cn):
         return self.apply(cn)

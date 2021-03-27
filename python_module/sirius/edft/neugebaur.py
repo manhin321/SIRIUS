@@ -492,6 +492,7 @@ class CG:
             callback(g_X=g_X, G_X=G_X, g_eta=g_eta, G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, it=ii)
             logger('step %5d' % ii, 'F: %.11f res: X,eta %+10.5e, %+10.5e' %
                    (FE, np.real(inner(g_X, G_X)), np.real(inner(g_eta, G_eta))))
+            logger('\t entropy: %.13f, ks-energy: %.13f' % (self.M.entropy, self.M.ks_energy))
             mag_str = sprint_magnetization(self.M.energy.kpointset, self.M.energy.density)
             logger(mag_str)
             # logger('magnetization: %.5f %.5f %.5f, total: %.5f' % (mag[0], mag[1], mag[2], np.linalg.norm(mag)))
@@ -520,7 +521,7 @@ class CG:
             # check that constraints are fulfilled
             delta_X = -(K @ (HX - SX @ LL) / kw)
             # check orthogonality constraint
-            assert l2norm(SX.H @ delta_X) < 1e-11
+            # assert l2norm(SX.H @ delta_X) < 1e-11
             delta_eta = kappa * (Hij - kw*diag(ek)) / kw
             # update kappa
             # dFdk = inner(g_eta, deltaP_eta) * tmin / kappa

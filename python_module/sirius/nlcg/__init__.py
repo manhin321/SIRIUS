@@ -207,13 +207,10 @@ def run(ycfg, sirius_input, callback=None, final_callback=None, error_callback=N
                                 sirius_input,
                                 callback, final_callback)
     elif method == 'neugebaur':
+        print('before run neugebauer')
         X, fn, FE = run_neugebaur(ycfg,
                                   sirius_input,
                                   callback, final_callback, error_callback=error_callback)
-    elif method == 'neugebaur_us':
-        X, fn, FE = run_neugebaur_us(ycfg,
-                                     sirius_input,
-                                     callback, final_callback, error_callback=error_callback)
 
     logger('Final free energy: %.10f' % FE)
     return X, fn, FE
