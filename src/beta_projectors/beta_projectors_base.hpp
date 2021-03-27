@@ -249,6 +249,11 @@ class Beta_projectors_base
         return gkvec_;
     }
 
+    ///  nrows (global)
+    int nrows() const
+    {
+        return gkvec_.num_gvec();
+    }
 
     __attribute__((deprecated)) void generate(int ichunk__, int j__)
     {
