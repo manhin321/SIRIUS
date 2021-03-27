@@ -21,7 +21,18 @@ if(CREATE_PYTHON_MODULE)
   endif()
 
   set(libname py_sirius)
-  pybind11_add_module(${libname} py_sirius.cpp)
+  pybind11_add_module(${libname} py_sirius.cpp
+    py_sirius_ex1.cpp
+    py_sirius_ex2.cpp
+    py_sirius_sddk.cpp
+    py_sirius_density_potential.cpp
+    py_sirius_operators.cpp
+    py_sirius_forces.cpp
+    py_sirius_dft.cpp
+    py_sirius_fft.cpp
+    py_sirius_kpoint.cpp
+    magnetization.cpp
+    pybind_helpers.cpp)
 
   add_dependencies(${libname} sirius)
   target_link_libraries(${libname} PRIVATE mpi4py::mpi4py)
