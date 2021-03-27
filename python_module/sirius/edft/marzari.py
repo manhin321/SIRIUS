@@ -8,7 +8,7 @@ Conjugate gradient method for Marzari, Vanderbilt, Payne:
 from collections import namedtuple
 from scipy.constants import physical_constants
 import numpy as np
-from ..coefficient_array import diag, inner, spdiag, ones_like
+from ..coefficient_array import diag, inner, spdiag, ones_like, l2norm
 from .ortho import loewdin
 from ..helpers import save_state
 from ..logger import Logger
@@ -150,7 +150,6 @@ class FreeEnergy:
 
 
 class CG:
-    fd_slope_check = False
 
     def __init__(self, free_energy, fd_slope_check=False):
         """
@@ -305,8 +304,6 @@ class CG:
                 gLL = X.H@GXp
                 G_X = dX + beta_cg * (GXp - X@gLL)
 
-            G_X = dX + beta_cg * (GXp - X @ (X.H @ GXp))
-
         logger('beta_cg: %.6f' % beta_cg)
         return dX, G_X, g_X
 
@@ -337,10 +334,10 @@ class CG:
         """
         tt = 0.2
         if self.fd_slope_check:
-            _dt = 1e-7
+            _dt = slope/50
             fx = T(_dt)
             slope_fd = (fx.F - F0) / _dt
-            logger('VERRBOSE slope: %.6f, slope_fd: %.6f' % (slope, slope_fd))
+            logger('VERRBOSE slope: %.10f, slope_fd: %.10f' % (slope, slope_fd))
         b = slope
         c = F0
         while True:
@@ -385,7 +382,7 @@ class CG:
         _, fx = btsearch(T, 1, f0=F0, tau=tau)
         return fx.X, fx.fn, fx.F, fx.Hx
 
-    def step_fn(self, X, fn, tol, num_iter=2):
+    def step_fn(self, X, fn, tol, num_iter):
 
         kset = self.free_energy.energy.kpointset
         kw = kset.w
