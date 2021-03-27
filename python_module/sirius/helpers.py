@@ -232,7 +232,7 @@ def kpoint_index(kp, ctx):
     """
     import numpy as np
 
-    pm = ctx.parameters_input()
+    pm = ctx.cfg.parameters
     shiftk = np.array(pm.shiftk, dtype=np.int)
     ngridk = np.array(pm.ngridk, dtype=np.int)
     ik = np.array(kp.vk) * ngridk - shiftk/2

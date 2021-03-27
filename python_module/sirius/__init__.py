@@ -22,7 +22,7 @@ class OccupancyDescriptor(object):
             ll = list(array(v).flatten())
             f[:len(ll)] = ll
             instance[k].set_band_occupancy(ispn, f)
-        instance.sync_band("occupancy")
+        instance.sync_band_occupancy()
 
     def __get__(self, instance, owner):
 
@@ -39,6 +39,7 @@ class PWDescriptor(object):
     """
     Accessor for wave-function coefficients
     """
+
     def __set__(self, instance, value):
         from .helpers import store_pw_coeffs
         store_pw_coeffs(instance, value)
@@ -51,6 +52,7 @@ class KPointWeightDescriptor(object):
     """
     Accessor for k-point weights
     """
+
     def __get__(self, instance, owner):
 
         out = CoefficientArray(dtype=np.double, ctype=np.array)
@@ -66,6 +68,7 @@ class BandEnergiesDescriptor(object):
     """
     Accessor for band energies
     """
+
     def __get__(self, instance, owner):
 
         out = CoefficientArray(dtype=np.double, ctype=np.array)
@@ -76,13 +79,12 @@ class BandEnergiesDescriptor(object):
                 out[key] = np.array(instance[k].band_energies(ispn))
         return out
 
-
     def __set__(self, instance, value):
         for key, val in value._data.items():
             k, ispn = key
             for j, v in enumerate(val):
                 instance[k].set_band_energy(j, ispn, v)
-        instance.sync_band("energy")
+        instance.sync_band_energy()
 
 
 class DensityDescriptor(object):
@@ -105,3 +107,15 @@ Density.rho = DensityDescriptor(0)
 Density.mx = DensityDescriptor(1)
 Density.my = DensityDescriptor(2)
 Density.mz = DensityDescriptor(3)
+
+
+# __repr__ for matrix / vector types
+def _show_array(self):
+    return np.array(self).__repr__()
+
+
+from .py_sirius import vector3d_double, matrix3d, vector3d_int
+
+vector3d_double.__repr__ = _show_array
+vector3d_int.__repr__ = _show_array
+matrix3d.__repr__ = _show_array

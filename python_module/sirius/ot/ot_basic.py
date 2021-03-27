@@ -96,7 +96,7 @@ class Energy:
                 # print(np.real(ek), end=' ')
                 self.kpointset[k].set_band_energy(j, ispn, np.real(ek))
             # print('\n')
-        self.kpointset.sync_band("energy")
+        self.kpointset.sync_band_energy()
 
         Etot = pp_total_energy(self.potential, self.density,
                                self.kpointset, self.ctx)
