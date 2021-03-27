@@ -72,12 +72,18 @@ double ground_state(Simulation_context& ctx,
     /* launch the calculation */
     auto result = dft.find(inp.density_tol(), inp.energy_tol(), initial_tol, inp.num_dft_iter(), write_state);
 
+    std::cout << "nlcg after scf init (freeCudaMem): " << acc::get_free_mem() << "\n";
+    std::cout << "mempool (total/free): "
+              << ctx.mem_pool(device_t::GPU).total_size() << " / "
+              << ctx.mem_pool(device_t::GPU).free_size() << "\n";
     auto& nlcg_params  = ctx.cfg().nlcg();
     if (ctx.cfg().control().verification() >= 1) {
         dft.check_scf_density();
     }
 
     Energy energy(*kset, density, potential);
+
+    std::cout << "after (setting up Energy / preallocate wfct) (freeCudaMem): " << acc::get_free_mem() << "\n";
 
     call_nlcg(ctx, nlcg_params, energy, *kset, potential);
 
