@@ -11,6 +11,22 @@
 
 namespace sirius {
 
+namespace _local {
+
+class OperatorBase
+{
+  public:
+    OperatorBase(int n) : n(n) {};
+    OperatorBase() = delete;
+
+    int size() const {return n; }
+
+  private:
+    int n;
+};
+
+}  // _local
+
 template<class numeric_t>
 class DiagonalPreconditioner
 {
@@ -75,10 +91,10 @@ DiagonalPreconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const s
  *  https://dx.doi.org/10.1103/RevModPhys.64.1045
  */
 template <class numeric_t>
-class Teter : DiagonalPreconditioner<numeric_t>
+class Teter : DiagonalPreconditioner<numeric_t>, public _local::OperatorBase
 {
   public:
-    Teter(Simulation_context& ctx, const Gvec& gkvec) : DiagonalPreconditioner<numeric_t>(ctx)
+    Teter(Simulation_context& ctx, const Gvec& gkvec) : DiagonalPreconditioner<numeric_t>(ctx), _local::OperatorBase(gkvec.count())
     {
         this->d_ = mdarray<numeric_t, 1>(gkvec.count());
         for (int i = 0; i < gkvec.count(); ++i) {
@@ -108,7 +124,7 @@ class Teter : DiagonalPreconditioner<numeric_t>
  * http://dx.doi.org/10.1016/j.cpc.2005.07.011
  */
 template <class numeric_t>
-class Ultrasoft_preconditioner
+class Ultrasoft_preconditioner : public _local::OperatorBase
 {
   public:
     Ultrasoft_preconditioner(Simulation_context& simulation_context, const Q_operator& q_op,
@@ -134,7 +150,8 @@ class Ultrasoft_preconditioner
 template <class numeric_t>
 Ultrasoft_preconditioner<numeric_t>::Ultrasoft_preconditioner(Simulation_context& simulation_context,
                                                               const Q_operator& q_op, int ispn, const Beta_projectors_base& bp, const Gvec& gkvec)
-    : ctx_(simulation_context)
+    : _local::OperatorBase(gkvec.count())
+    , ctx_(simulation_context)
     , P(simulation_context, gkvec)
     , q_op(q_op)
     , ispn(ispn)
@@ -217,29 +234,11 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
         // apply preconditioner to beta projectors
         auto G = P.apply(beta_coeffs.pw_coeffs_a, pu);
         int row_offset = beta_coeffs.beta_chunk.offset_;
-        // TODO: at memory_t dependent ptr / blas
-        // linalg(linalg_t::blas)
-        //     .gemm('C', 'N', G.size(1), nbnd, G.size(0), &linalg_const<numeric_t>::one, G.at(memory_t::host), G.ld(),
-        //           X.at(memory_t::host), X.ld(), &linalg_const<numeric_t>::zero(),
-        //           bphi.at(memory_t::host, row_offset, 0), bphi.ld());
+
         linalg(la)
             .gemm('C', 'N', G.size(1), nbnd, G.size(0), &linalg_const<numeric_t>::one(), G.at(pm), G.ld(),
                   X.at(pm), X.ld(), &linalg_const<numeric_t>::zero(),
                   bphi.at(pm, row_offset, 0), bphi.ld());
-        // linalg(linalg_t::blas).gemm(char transa, char transb, ftn_int m, ftn_int n, ftn_int k, const T *alpha, const
-        // T *A, ftn_int lda, const T *B, ftn_int ldb, const T *beta, T *C, ftn_int ldc)
-        //         auto bphi_loc = inner<numeric_t>(ctx_.blas_linalg_t(), ctx_.processing_unit(),
-        //         ctx_.preferred_memory_t(),
-        //                                          ctx_.mem_pool(memory_t::host), G, X, 0, nbnd);
-        //         // copy submatrix to bphi
-        //         int beta_offset = beta_coeffs.beta_chunk.offset_;
-        // // std::cout << "beta_offset: " << beta_offset << "\n";
-        // #pragma omp parallel for
-        //         for (int lbnd = 0; lbnd < nbnd; ++lbnd) {
-        //             // issue copy operation
-        //             sddk::copy(memory_t::host, bphi_loc.at(memory_t::host, 0, lbnd), memory_t::host,
-        //                        bphi.at(memory_t::host, beta_offset, lbnd), beta_coeffs.beta_chunk.num_beta_);
-        //         }
     }
     assert(num_beta == static_cast<int>(bphi.size(0)) && nbnd == static_cast<int>(bphi.size(1)));
 
@@ -263,14 +262,6 @@ Ultrasoft_preconditioner<numeric_t>::apply(sddk::mdarray<numeric_t, 2>& Y, const
 
     auto R = empty_like(bphi, ctx_.mem_pool(pm));
     q_op.rmatmul(R, bphi, ispn, pm, -1);
-
-//     if (ctx_.processing_unit() == device_t::GPU) {
-// #ifdef SIRIUS_GPU
-//         // allocate bphi on gpu if needed
-//         bphi.allocate(ctx_.mem_pool(ctx_.processing_unit()));
-//         Y.allocate(ctx_.mem_pool(ctx_.processing_unit()));
-// #endif
-//     }
 
     // compute Y <- (1+T')^(-1) X
     this->P.apply(Y, X, pu);

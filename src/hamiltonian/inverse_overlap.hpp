@@ -12,11 +12,14 @@
 
 namespace sirius {
 
+namespace _local {
+
 class Overlap_operator
 {
   public:
-    Overlap_operator(const Simulation_context& simulation_context)
+    Overlap_operator(const Simulation_context& simulation_context, int n)
         : ctx_(simulation_context)
+        , n_(n)
     {
     }
 
@@ -25,17 +28,25 @@ class Overlap_operator
         return ctx_;
     }
 
+    /// global dimension of the operator
+    int size() const
+    {
+        return n_;
+    }
+
   protected:
     const Simulation_context& ctx_;
+    int n_;
 };
+}  // _local
 
 template <class numeric_t>
-class InverseS_k : public Overlap_operator
+class InverseS_k : public _local::Overlap_operator
 {
   public:
     InverseS_k(const Simulation_context& simulation_context, const Q_operator& q_op,
                const Beta_projectors_base& bp, int ispn)
-        : Overlap_operator(simulation_context)
+        : Overlap_operator(simulation_context, bp.nrows())
         , q_op(q_op)
         , bp(bp)
         , ispn(ispn)
@@ -59,11 +70,11 @@ class InverseS_k : public Overlap_operator
 };
 
 template <class numeric_t>
-class S_k : public Overlap_operator
+class S_k : public _local::Overlap_operator
 {
   public:
     S_k(const Simulation_context& ctx, const Q_operator& q_op, const Beta_projectors_base& bp, int ispn)
-        : Overlap_operator(ctx)
+        : Overlap_operator(ctx, bp.nrows())
         , q_op(q_op)
         , bp(bp)
         , ispn(ispn)
@@ -143,6 +154,7 @@ void
 InverseS_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm)
 {
     int nbnd = X.size(1);
+    assert(X.size(0) == this->size());
 
     pm = (pm == memory_t::none) ? ctx_.preferred_memory_t() : pm;
     device_t pu = is_host_memory(pm) ? device_t::CPU : device_t::GPU;
@@ -232,6 +244,8 @@ template <class numeric_t>
 void
 S_k<numeric_t>::apply(mdarray<numeric_t, 2>& Y, const mdarray<numeric_t, 2>& X, memory_t pm)
 {
+    assert(X.size(0) == this->size());
+
     pm          = (pm == memory_t::none) ? ctx_.preferred_memory_t() : pm;
     device_t pu = is_host_memory(pm) ? device_t::CPU : device_t::GPU;
 
