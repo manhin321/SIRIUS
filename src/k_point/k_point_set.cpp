@@ -154,74 +154,58 @@ void K_point_set::find_band_occupancies()
         return;
     }
 
-    /* target number of electrons */
-    double ne_target = ctx_.unit_cell().num_valence_electrons() - ctx_.cfg().parameters().extra_charge();
+    double ef{0};
+    double de{0.1};
 
-    /* this is a special case when there are no empty states and the
-     * system is non-magnetic */
-    if (std::abs(ctx_.num_fv_states() * double(ctx_.max_occupancy()) - ne_target) < 1e-10) {
-        /* this is an insulator, skip search for band occupancies */
-        this->band_gap_ = 0;
+    int s{1};
+    int sp;
 
-        /* determine fermi energy as max occupied band energy. */
-        energy_fermi_ = std::numeric_limits<double>::lowest();
-        for (int ik = 0; ik < num_kpoints(); ik++) {
-            for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
-                for (int j = 0; j < ctx_.num_bands(); j++) {
-                    energy_fermi_ = std::max(energy_fermi_, kpoints_[ik]->band_energy(j, ispn));
-                }
-            }
-        }
-        return;
-    }
-
-    /* get minimum and maximum band energies */
-
-    auto emin = std::numeric_limits<double>::max();
-    auto emax = std::numeric_limits<double>::lowest();
-
-    #pragma omp parallel for reduction(min:emin) reduction(max:emax)
-    for (int ikloc = 0; ikloc < spl_num_kpoints_.local_size(); ikloc++) {
-        int ik = spl_num_kpoints_[ikloc];
-        for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
-            emin = std::min(emin, kpoints_[ik]->band_energy(0, ispn));
-            emax = std::max(emax, kpoints_[ik]->band_energy(ctx_.num_bands() - 1, ispn));
-        }
-    }
-    comm().allreduce<double, sddk::mpi_op_t::min>(&emin, 1);
-    comm().allreduce<double, sddk::mpi_op_t::max>(&emax, 1);
+    sddk::mdarray<double, 3> bnd_occ(ctx_.num_bands(), ctx_.num_spinors(), num_kpoints());
 
     double ne{0};
 
-    /* smearing function */
-    auto f = smearing::occupancy(ctx_.smearing(), ctx_.smearing_width());
+    /* target number of electrons */
+    double ne_target = ctx_.unit_cell().num_valence_electrons() - ctx_.cfg().parameters().extra_charge();
 
-    splindex<splindex_t::block> splb(ctx_.num_bands(), ctx_.comm_band().size(), ctx_.comm_band().rank());
+    if (std::abs(ctx_.num_fv_states() * double(ctx_.max_occupancy()) - ne_target) < 1e-10) {
+        // this is an insulator, skip search for band occupancies
+        this->band_gap_ = -1;
+
+        // determine fermi energy as max occupied band energy.
+        double efermi = std::numeric_limits<double>::min();
+        for (int ik = 0; ik < num_kpoints(); ik++) {
+            for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
+                for (int j = 0; j < ctx_.num_bands(); j++) {
+                    efermi = std::max(efermi, kpoints_[ik]->band_energy(j, ispn));
+                }
+            }
+        }
+        energy_fermi_ = efermi;
+        return;
+    }
+
+    auto f = smearing::occupancy(ctx_.smearing(), ctx_.smearing_width());
 
     int step{0};
     /* calculate occupations */
     while (std::abs(ne - ne_target) >= 1e-11) {
-        energy_fermi_ = (emin + emax) / 2.0;
+        /* update Efermi */
+        ef += de;
         /* compute total number of electrons */
         ne = 0.0;
-        for (int ikloc = 0; ikloc < spl_num_kpoints_.local_size(); ikloc++) {
-            int ik = spl_num_kpoints_[ikloc];
-            double tmp{0};
-            #pragma omp parallel reduction(+:tmp)
+        for (int ik = 0; ik < num_kpoints(); ik++) {
             for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
-                #pragma omp for
-                for (int j = 0; j < splb.local_size(); j++) {
-                    tmp += f(energy_fermi_ - kpoints_[ik]->band_energy(splb[j], ispn)) * ctx_.max_occupancy();
+                for (int j = 0; j < ctx_.num_bands(); j++) {
+                    bnd_occ(j, ispn, ik) = f(ef - kpoints_[ik]->band_energy(j, ispn)) * ctx_.max_occupancy();
+                    ne += bnd_occ(j, ispn, ik) * kpoints_[ik]->weight();
                 }
             }
-            ne += tmp * kpoints_[ik]->weight();
         }
-        ctx_.comm().allreduce(&ne, 1);
-        if (ne > ne_target) {
-            emax = energy_fermi_;
-        } else {
-            emin = energy_fermi_;
-        }
+
+        sp = s;
+        s  = (ne > ne_target) ? -1 : 1;
+        /* reduce de step if we change the direction, otherwise increase the step */
+        de = (s != sp) ? (-de * 0.5) : (de * 1.25);
 
         if (step > 10000) {
             std::stringstream s;
@@ -231,39 +215,35 @@ void K_point_set::find_band_occupancies()
         step++;
     }
 
-    for (int ikloc = 0; ikloc < spl_num_kpoints_.local_size(); ikloc++) {
-        int ik = spl_num_kpoints_[ikloc];
+    energy_fermi_ = ef;
+
+    for (int ik = 0; ik < num_kpoints(); ik++) {
         for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
-            #pragma omp parallel for
             for (int j = 0; j < ctx_.num_bands(); j++) {
-                kpoints_[ik]->band_occupancy(j, ispn,
-                    f(energy_fermi_ - kpoints_[ik]->band_energy(j, ispn)) * ctx_.max_occupancy());
+                kpoints_[ik]->band_occupancy(j, ispn, bnd_occ(j, ispn, ik));
             }
         }
     }
-
-    this->sync_band<sync_band_t::occupancy>();
 
     band_gap_ = 0.0;
 
     int nve = static_cast<int>(ne_target + 1e-12);
     if (ctx_.num_spins() == 2 || (std::abs(nve - ne_target) < 1e-12 && nve % 2 == 0)) {
         /* find band gap */
-        std::vector<std::pair<double, double>> eband(ctx_.num_bands() * ctx_.num_spinors());
+        std::vector<std::pair<double, double>> eband;
+        std::pair<double, double> eminmax;
 
         for (int ispn = 0; ispn < ctx_.num_spinors(); ispn++) {
-            #pragma omp for
             for (int j = 0; j < ctx_.num_bands(); j++) {
-                std::pair<double, double> eminmax;
-                eminmax.first  = std::numeric_limits<double>::max();
-                eminmax.second = std::numeric_limits<double>::lowest();
+                eminmax.first  = 1e10;
+                eminmax.second = -1e10;
 
                 for (int ik = 0; ik < num_kpoints(); ik++) {
                     eminmax.first  = std::min(eminmax.first, kpoints_[ik]->band_energy(j, ispn));
                     eminmax.second = std::max(eminmax.second, kpoints_[ik]->band_energy(j, ispn));
                 }
 
-                eband[j + ispn * ctx_.num_bands()] = eminmax;
+                eband.push_back(eminmax);
             }
         }
 
