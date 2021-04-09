@@ -76,14 +76,14 @@ def eye_like(shapes):
     return out
 
 
-def identity_op_like(X):
-    from scipy.sparse.linalg import LinearOperator
+# def identity_op_like(X):
+#     from scipy.sparse.linalg import LinearOperator
 
-    if isinstance(X, CoefficientArrayBase):
-        for k in X:
-            n = X[k].shape[0]
+#     if isinstance(X, CoefficientArrayBase):
+#         for k in X:
+#             n = X[k].shape[0]
 
-    raise TypeError
+#     raise TypeError
 
 
 def diag(x):
@@ -177,6 +177,9 @@ class CoefficientArrayBase(collections.abc.Mapping):
 
     def __len__(self):
         return len(self._data)
+
+    # workaround for numpy exploiting the __iter__(self)
+    __array_priority__ = 10000
 
 
 class CoefficientArray(CoefficientArrayBase):
@@ -511,6 +514,10 @@ class CoefficientArray(CoefficientArrayBase):
             p.pretty(val)
             p.text('\n')
 
+    def __repr__(self):
+        for key in self._data:
+            print(key, self._data[key])
+
     @staticmethod
     def ones_like(x, dtype=None, ctype=None):
         if ctype is None:
@@ -532,7 +539,6 @@ class CoefficientArray(CoefficientArrayBase):
         for k in x._data.keys():
             out[k] = np.zeros_like(x[k], dtype=dtype)
         return out
-
 
     __lmul__ = __mul__
     __rmul__ = __mul__
