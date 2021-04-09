@@ -122,7 +122,7 @@ def DFT_ground_state_find(num_dft_iter=1, config='sirius.json'):
     ctx.initialize()
     if 'vk' in siriusJson['parameters']:
         vk = siriusJson['parameters']['vk']
-        kPointSet = K_point_set(ctx, [vector3d_double(x) for x in vk])
+        kPointSet = K_point_set(ctx, vk)
     else:
         if 'shiftk' in siriusJson['parameters']:
             # make sure shiftk is not a list of floats
@@ -173,7 +173,7 @@ def dphk_factory(config='sirius.json'):
     config -- (Default sirius.json) json configuration
     """
 
-    from . import Band, K_point_set, Potential, Density, Hamiltonian, Simulation_context, vector3d_double
+    from . import Band, K_point_set, Potential, Density, Hamiltonian, Simulation_context
     import json
 
     siriusJson = json.load(open(config))
@@ -185,7 +185,7 @@ def dphk_factory(config='sirius.json'):
 
     if 'vk' in siriusJson['parameters']:
         vk = siriusJson['parameters']['vk']
-        kPointSet = K_point_set(ctx, [vector3d_double(x) for x in vk])
+        kPointSet = K_point_set(ctx, vk)
     else:
         if 'shiftk' in siriusJson['parameters']:
             shiftk = siriusJson['parameters']['shiftk']
