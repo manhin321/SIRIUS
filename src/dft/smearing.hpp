@@ -42,6 +42,7 @@ const double sqrt2 = std::sqrt(2.0);
 enum class smearing_t
 {
     gaussian,
+    gaussian_spline,
     fermi_dirac,
     cold
 };
@@ -49,11 +50,10 @@ enum class smearing_t
 inline smearing_t get_smearing_t(std::string name__)
 {
     std::transform(name__.begin(), name__.end(), name__.begin(), ::tolower);
-    std::map<std::string, smearing_t> const m = {
-        {"gaussian", smearing_t::gaussian},
+    std::map<std::string, smearing_t> const m = {{"gaussian", smearing_t::gaussian},
+                                                 {"gaussian_spline", smearing_t::gaussian_spline},
         {"fermi_dirac", smearing_t::fermi_dirac},
-        {"cold", smearing_t::cold}
-    };
+                                                 {"cold", smearing_t::cold}};
 
     if (m.count(name__) == 0) {
         std::stringstream s;
@@ -85,6 +85,29 @@ inline double entropy(double x__, double width__)
 
 } // namespace "gaussian"
 
+namespace gaussian_spline {
+
+inline double occupancy(double x__, double width__)
+{
+    double t = x__ / width__;
+    double sq2 = std::sqrt(2);
+    if (t > 0) {
+        return 1 - 0.5 * std::exp(0.5 - std::pow(t - 1 / sq2, 2));
+    } else {
+        return 0.5 * std::exp(0.5 - std::pow(1 / sq2 + t, 2));
+    }
+}
+
+inline double entropy(double x__, double width__)
+{
+    double z = std::abs(x__);
+    static double sqrt_piexp = std::sqrt(pi * std::exp(1.));
+    double S = 0.25 * (2 * std::exp(-z * (std::sqrt(2) + z)) * z + sqrt_piexp * std::erfc(1. / sqrt2 + z));
+    return width__ * S;
+}
+
+}
+
 namespace fermi_dirac {
 
 inline double delta(double x__, double width__)
@@ -104,6 +127,7 @@ inline double entropy(double x__, double width__)
     if (std::abs(t) > 50) {
         return 0.0;
     }
+    // TODO: check under and overflow
     double f = 1.0 / (1.0 + std::exp(t));
     if (1-f < 1e-16) {
         return width__ * f * std::log(f);
@@ -145,6 +169,9 @@ inline std::function<double(double)> occupancy(smearing_t type__, double width__
         case smearing_t::gaussian: {
             return [width__](double x__){return gaussian::occupancy(x__, width__);};
         }
+        case smearing_t::gaussian_spline: {
+            return [width__](double x__) { return gaussian_spline::occupancy(x__, width__); };
+        }
         case smearing_t::fermi_dirac: {
             return [width__](double x__){return fermi_dirac::occupancy(x__, width__);};
         }
@@ -162,6 +189,9 @@ inline std::function<double(double)> entropy(smearing_t type__, double width__)
     switch (type__) {
         case smearing_t::gaussian: {
             return [width__](double x__){return gaussian::entropy(x__, width__);};
+        }
+        case smearing_t::gaussian_spline: {
+            return [width__](double x__) { return gaussian_spline::entropy(x__, width__); };
         }
         case smearing_t::fermi_dirac: {
             return [width__](double x__){return fermi_dirac::entropy(x__, width__);};
