@@ -151,7 +151,10 @@ def run_neugebaur(config, sirius_config, callback, final_callback, error_callbac
                                 tau=cg_config['tau'],
                                 callback=callback(kset, E=E),
                                 error_callback=error_callback(kset, E=E))
-    assert success
+    if not success:
+        print('NOT converged.')
+    else:
+        print('SUCCESSFULLY converged')
     tstop = time.time()
     logger('cg.run took: ', tstop-tstart, ' seconds')
     if final_callback is not None:
@@ -211,6 +214,8 @@ def run(ycfg, sirius_input, callback=None, final_callback=None, error_callback=N
         X, fn, FE = run_neugebaur(ycfg,
                                   sirius_input,
                                   callback, final_callback, error_callback=error_callback)
+    else:
+        raise Exception('invalid method given')
 
     logger('Final free energy: %.10f' % FE)
     return X, fn, FE
