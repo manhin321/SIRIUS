@@ -1,4 +1,5 @@
 #include "python_module_includes.hpp"
+#include "utils/rt_graph.hpp"
 
 void
 init_ex1(py::module& m)
@@ -66,4 +67,11 @@ init_ex1(py::module& m)
         .def("iterative_solver_tolerance", py::overload_cast<double>(&Simulation_context::iterative_solver_tolerance))
         .def("iterative_solver_tolerance",
              py::overload_cast<>(&Simulation_context::iterative_solver_tolerance, py::const_));
+
+    py::class_<rt_graph::TimingResult>(m, "TimningResult").def("json", &rt_graph::TimingResult::json);
+    m.def("_timings", []() {
+        // returns a json as string
+        return ::utils::global_rtgraph_timer.process().json();
+    });
+
 }

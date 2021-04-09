@@ -9,6 +9,7 @@ from collections import namedtuple
 from scipy.constants import physical_constants
 import numpy as np
 from ..coefficient_array import diag, inner, spdiag, ones_like, l2norm
+from ..py_sirius import sprint_magnetization
 from .ortho import loewdin
 from ..helpers import save_state
 from ..logger import Logger
@@ -241,6 +242,9 @@ class CG:
                 raise Exception('abort')
             callback(X=X, fn=fn, F=F, dX=dX, G_X=G_X, g_X=g_X, it=i)
             logger("step %5d F: %.11f res: X,fn %+10.5e %+10.5e" % (i, F, slope_X, slope_fn))
+            mag_str = sprint_magnetization(self.free_energy.energy.kpointset, self.free_energy.energy.density)
+            logger(mag_str)
+
 
             if np.abs(slope_fn) < tol and np.abs(slope_X) < tol:
                 return F, X, fn, True

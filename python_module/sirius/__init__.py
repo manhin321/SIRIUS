@@ -1,4 +1,5 @@
 from .helpers import *
+import json
 from .coefficient_array import CoefficientArray, PwCoeffs
 from .py_sirius import *
 from .py_sirius import K_point_set, Density
@@ -119,3 +120,9 @@ from .py_sirius import vector3d_double, matrix3d, vector3d_int
 vector3d_double.__repr__ = _show_array
 vector3d_int.__repr__ = _show_array
 matrix3d.__repr__ = _show_array
+
+
+def timings():
+    """Return timings from SIRIUS internal profiler."""
+    from .py_sirius import _timings
+    return json.loads(_timings())
