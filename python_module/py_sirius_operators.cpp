@@ -76,11 +76,11 @@ void init_operators(py::module& m)
         .def("apply", [](py::object& obj, py::array_t<complex_double>& X) {
             using class_t    = Ultrasoft_preconditioner<complex_double>;
             class_t& precond = obj.cast<class_t&>();
-            if (precond.ctx().preferred_memory_t() != memory_t::host) {
-                char msg[256];
-                std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
-                throw std::runtime_error(msg);
-            }
+            // if (precond.ctx().preferred_memory_t() != memory_t::host) {
+            //     char msg[256];
+            //     std::sprintf(msg, "only implemented for host memory (%s:%d)", __FILE__, __LINE__);
+            //     throw std::runtime_error(msg);
+            // }
             if (X.strides(0) != sizeof(complex_double)) {
                 char msg[256];
                 std::sprintf(msg, "invalid stride: [%ld, %ld] in %s:%d", X.strides(0), X.strides(1), __FILE__,
@@ -96,7 +96,7 @@ void init_operators(py::module& m)
             int rows = X.shape(0);
             int cols = X.shape(1);
             const sddk::mdarray<complex_double, 2> array(static_cast<complex_double*>(ptr), rows, cols);
-            return precond.apply(array);
+            return precond.apply(array, memory_t::host);
         });
 
     py::class_<beta_chunk_t>(m, "beta_chunk")
