@@ -1040,8 +1040,12 @@ class Atom_type
         }
         /* combined index */
         int ijv = idxrf2__ * (idxrf2__ + 1) / 2 + idxrf1__;
-
         return q_radial_functions_l_(ijv, l__);
+    }
+
+    inline int num_q_radial_functions() const
+    {
+        return q_radial_functions_l_.size();
     }
 
     inline bool spin_orbit_coupling() const

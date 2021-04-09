@@ -228,6 +228,8 @@ void Potential::calc_PAW_local_potential(paw_potential_data_t& ppd,
 
     double ps_hartree_energy = calc_PAW_hartree_potential(*ppd.atom_, *ps_density[0], ppd.ps_potential_[0]);
 
+    // std::cout << "ppd_hartree_energy: " << std::setprecision(10) << ae_hartree_energy - ps_hartree_energy << "\n";
+
     ppd.hartree_energy_ = ae_hartree_energy - ps_hartree_energy;
 
     /* calculation of XC potential */
@@ -257,9 +259,10 @@ void Potential::calc_PAW_local_potential(paw_potential_data_t& ppd,
 
     /* save xc energy in pdd structure */
     ppd.xc_energy_ = ae_xc_energy - ps_xc_energy;
+    // std::cout << "ppd.xc_energy: " << std::setprecision(10) << ae_xc_energy - ps_xc_energy << "\n";
 }
 
-void Potential::calc_PAW_local_Dij(paw_potential_data_t& pdd, mdarray<double, 4>& paw_dij)
+void Potential::calc_PAW_local_Dij(const paw_potential_data_t& pdd, mdarray<double, 4>& paw_dij)
 {
     int paw_ind = pdd.ia_paw;
 
@@ -298,8 +301,12 @@ void Potential::calc_PAW_local_Dij(paw_potential_data_t& pdd, mdarray<double, 4>
                     /* fill array */
                     for (int irad = 0; irad < rgrid.num_points(); irad++) {
                         double ae_part = paw_ae_wfs(irad, irb1) * paw_ae_wfs(irad, irb2);
-                        double ps_part = paw_ps_wfs(irad, irb1) * paw_ps_wfs(irad, irb2) +
-                                         atom_type.q_radial_function(irb1, irb2, l_by_lm[lm3])(irad);
+                        double ps_part;
+                        if (atom_type.num_q_radial_functions() > 0) {
+                            ps_part = paw_ps_wfs(irad, irb1) * paw_ps_wfs(irad, irb2) + atom_type.q_radial_function(irb1, irb2, l_by_lm[lm3])(irad);
+                        } else {
+                            ps_part = paw_ps_wfs(irad, irb1) * paw_ps_wfs(irad, irb2);
+                        }
 
                         intdata[irad] = ae_atom_pot(lm3, irad) * ae_part - ps_atom_pot(lm3, irad) * ps_part;
                     }

@@ -459,6 +459,7 @@ void Density::init_density_matrix_for_paw()
     }
 }
 
+/// Updates ae_density, ps_density in density::paw_density_
 void Density::generate_paw_atom_density(int idx__)
 {
     int ia_paw      = ctx_.unit_cell().spl_num_paw_atoms(idx__);
@@ -532,10 +533,15 @@ void Density::generate_paw_atom_density(int idx__)
                          * dm_ij * GauntCoef * ( phi_i phi_j  +  Q_ij) */
                         ae_dens(lm3coef.lm3, irad) +=
                             dm[imagn] * inv_r2 * lm3coef.coef * paw_ae_wfs(irad, irb1) * paw_ae_wfs(irad, irb2);
+                        if(atom_type.num_q_radial_functions() > 0) {
                         ps_dens(lm3coef.lm3, irad) +=
                             dm[imagn] * inv_r2 * lm3coef.coef *
                             (paw_ps_wfs(irad, irb1) * paw_ps_wfs(irad, irb2) +
                              atom_type.q_radial_function(irb1, irb2, l_by_lm[lm3coef.lm3])(irad));
+                        } else {
+                            ps_dens(lm3coef.lm3, irad) +=
+                                dm[imagn] * inv_r2 * lm3coef.coef * paw_ps_wfs(irad, irb1) * paw_ps_wfs(irad, irb2);
+                        }
                     }
                 }
             }
