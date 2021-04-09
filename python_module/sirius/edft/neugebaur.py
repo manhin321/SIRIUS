@@ -374,7 +374,7 @@ class CG:
         return Xn, fn, ek, F, Hx, Ul
 
     def backtracking_search(self, X, f, eta, Fline, F0, tau=0.5, error_callback=None):
-        t1, res = btsearch(Fline, 5, F0, tau=tau, error_callback=error_callback)
+        t1, res = btsearch(Fline, 5, F0, tau=tau, maxiter=8, error_callback=error_callback)
         F1, Hx1, X1, f1, ek1, Ul1 = res
 
         return X1, f1, ek1, F1, Hx1, Ul1, t1
@@ -420,7 +420,7 @@ class CG:
         m = kset.ctx().max_occupancy()
         # set occupation numbers from band energies
         fn = kset.fn
-        eta = diag(self.M.smearing.ek(fn))
+        eta = diag(kset.e)
         w, U = eta.eigh()
         ek = w
         X = X@U
