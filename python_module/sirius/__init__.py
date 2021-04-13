@@ -120,6 +120,12 @@ from .py_sirius import vector3d_double, matrix3d, vector3d_int
 vector3d_double.__repr__ = _show_array
 vector3d_int.__repr__ = _show_array
 matrix3d.__repr__ = _show_array
+matrix3di.__repr__ = _show_array
+
+def gvec_array(gvec):
+    return np.vstack([np.array(gvec.gvec(i)) for i in range(gvec.count())])
+
+Gvec.__array__ = gvec_array
 
 
 def timings():

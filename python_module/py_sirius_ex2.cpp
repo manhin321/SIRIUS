@@ -1,4 +1,5 @@
 #include "python_module_includes.hpp"
+#include "symmetry/find_lat_sym.hpp"
 
 using complex_double = std::complex<double>;
 
@@ -26,14 +27,17 @@ void init_ex2(py::module& m)
         .def("add_atom", py::overload_cast<const std::string, std::vector<double>>(&Unit_cell::add_atom))
         .def("atom", py::overload_cast<int>(&Unit_cell::atom), py::return_value_policy::reference)
         .def("atom_type", py::overload_cast<int>(&Unit_cell::atom_type), py::return_value_policy::reference)
-        .def_property_readonly("atom_types", [](const Unit_cell& uc){
-            // note: this might create memory issues, but Atom_type does not have a copy operators
-            std::vector<const Atom_type*> types(uc.num_atom_types());
-            for (int i = 0; i < uc.num_atom_types(); ++i) {
-                types[i] = &uc.atom_type(i);
-            }
-            return types;
-        }, py::return_value_policy::reference_internal)
+        .def_property_readonly(
+            "atom_types",
+            [](const Unit_cell& uc) {
+                // note: this might create memory issues, but Atom_type does not have a copy operators
+                std::vector<const Atom_type*> types(uc.num_atom_types());
+                for (int i = 0; i < uc.num_atom_types(); ++i) {
+                    types[i] = &uc.atom_type(i);
+                }
+                return types;
+            },
+            py::return_value_policy::reference_internal)
         .def("lattice_vectors", &Unit_cell::lattice_vectors)
         .def(
             "set_lattice_vectors",
@@ -46,8 +50,9 @@ void init_ex2(py::module& m)
             },
             "l1"_a, "l2"_a, "l3"_a)
         .def("get_symmetry", &Unit_cell::get_symmetry)
-        .def_property_readonly("num_electrons", &Unit_cell::num_electrons)
+        .def_property_readonly("symmetry", &Unit_cell::symmetry, py::return_value_policy::reference_internal)
         .def_property_readonly("num_atoms", &Unit_cell::num_atoms)
+        .def_property_readonly("num_electrons", &Unit_cell::num_electrons)
         .def_property_readonly("num_valence_electrons", &Unit_cell::num_valence_electrons)
         .def_property_readonly("reciprocal_lattice_vectors", &Unit_cell::reciprocal_lattice_vectors)
         .def("generate_radial_functions", &Unit_cell::generate_radial_functions)
@@ -55,6 +60,27 @@ void init_ex2(py::module& m)
         .def_property_readonly("max_mt_radius", &Unit_cell::max_mt_radius)
         .def_property_readonly("omega", &Unit_cell::omega)
         .def("print_info", &Unit_cell::print_info);
+
+    py::class_<Unit_cell_symmetry>(m, "Unit_cell_symmetry")
+        .def_property_readonly("magnetic_group_symmetries",
+                               [](const Unit_cell_symmetry& ucs) {
+                                   std::vector<magnetic_group_symmetry_descriptor> v;
+                                   for (auto i = 0; i < ucs.num_mag_sym(); ++i) {
+                                       v.push_back(ucs.magnetic_group_symmetry(i));
+                                   }
+                                   return v;
+                               });
+
+    py::class_<space_group_symmetry_descriptor>(m, "spg_desc")
+        .def_readonly("R", &space_group_symmetry_descriptor::R)
+        .def_readonly("invR", &space_group_symmetry_descriptor::invR)
+        .def_readonly("t", &space_group_symmetry_descriptor::t)
+        .def_readonly("invRT", &space_group_symmetry_descriptor::invRT);
+
+    py::class_<magnetic_group_symmetry_descriptor>(m, "magnetic_group_symmetry_desc")
+        .def_readonly("spg_op", &magnetic_group_symmetry_descriptor::spg_op, py::return_value_policy::copy)
+        .def_readonly("spin_rotation", &magnetic_group_symmetry_descriptor::spin_rotation, py::return_value_policy::copy)
+        .def_readonly("spin_rotation_inv", &magnetic_group_symmetry_descriptor::spin_rotation_inv, py::return_value_policy::copy);
 
     py::class_<z_column_descriptor>(m, "z_column_descriptor")
         .def_readwrite("x", &z_column_descriptor::x)
@@ -154,6 +180,8 @@ void init_ex2(py::module& m)
              })
         .def("pw_coeffs_obj", py::overload_cast<int>(&Wave_functions::pw_coeffs, py::const_),
              py::return_value_policy::reference_internal);
+
+    m.def("find_lat_sym", &find_lat_sym);
 
 
 

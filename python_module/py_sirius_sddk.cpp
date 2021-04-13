@@ -121,5 +121,24 @@ void init_sddk(py::module& m)
         .def(py::init<matrix3d<double>>())
         .def("det", &matrix3d<double>::det);
 
-
+    py::class_<matrix3d<int>>(m, "matrix3di")
+        .def(py::init<std::vector<std::vector<int>>>())
+        .def(py::init<>())
+        .def("__call__", [](const matrix3d<int>& obj, int x, int y) { return obj(x, y); })
+        .def(
+            "__array__",
+            [](const matrix3d<int>& mat) {
+                return py::array_t<int>({3, 3}, {3 * sizeof(int), sizeof(int)}, &mat(0, 0));
+            },
+            py::return_value_policy::reference_internal)
+        .def(py::self * py::self)
+        .def("__getitem__", [](const matrix3d<int>& obj, int x, int y) { return obj(x, y); })
+        .def("__mul__",
+             [](const matrix3d<int>& obj, vector3d<int> const& b) {
+                 vector3d<int> res = obj * b;
+                 return res;
+             })
+        // .def("__repr__", [](const matrix3d<int>& mat) { return show_mat(mat); })
+        .def(py::init<matrix3d<int>>())
+        .def("det", &matrix3d<int>::det);
 }
