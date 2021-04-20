@@ -10,6 +10,7 @@ if __name__ == '__main__':
     parser.add_argument('--input', '-i', default='nlcg.yaml')
     parser.add_argument('--dump-on-error', '-e',
                         action='store_true', default=False)
+    parser.add_argument('--dump-on-exit', action='store_true', default=False)
 
     args = parser.parse_args()
     yaml_config = args.input
@@ -47,6 +48,23 @@ if __name__ == '__main__':
                 return None
         return _callback
 
+    def final_callback(kset, **kwargs):
+        E = kwargs['E']
+
+        if args.dump_on_exit:
+            def _callback(prefix='nlcg_final_state', **kwargs):
+                # kset.ctx().create_storage_file()
+                # store_density_potential(E.density, E.potential)
+                mag_mom = E.density.compute_atomic_mag_mom()
+                dump_dict = {**kwargs, 'mag_mom': mag_mom}
+                save_state(dump_dict,
+                           kset=kset, prefix=prefix)
+        else:
+            def _callback(*args, **kwargs):
+                return None
+        return _callback
+
     run(ycfg, args.sirius_config,
         callback=callback,
+        final_callback=final_callback,
         error_callback=error_callback)
