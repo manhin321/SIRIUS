@@ -161,40 +161,6 @@ def run_neugebaur(config, sirius_config, callback, final_callback, error_callbac
         final_callback(kset, E=E)(X=X, fn=fn)
     return X, fn, FE
 
-def run_neugebaur_us(config, sirius_config, callback, final_callback, error_callback):
-    """
-    Keyword Arguments:
-    config        -- dictionary
-    sirius_config -- /path/to/sirius.json
-    """
-    from sirius.edft.neugebauer_new import CG
-    from sirius.edft import FreeEnergy
-
-    cg_config = config['CG']
-    X, fn, E, ctx, kset = initial_state(sirius_config, cg_config['nscf'])
-    T = config['System']['T']
-    smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
-    M = FreeEnergy(E=E, T=T, smearing=smearing)
-    cg = CG(M)
-
-    tstart = time.time()
-    X, fn, FE, success = cg.run(X, fn,
-                                tol=cg_config['tol'],
-                                maxiter=cg_config['maxiter'],
-                                kappa=cg_config['method']['kappa'],
-                                restart=cg_config['restart'],
-                                cgtype=cg_config['type'],
-                                tau=cg_config['tau'],
-                                callback=callback(kset, E=E),
-                                error_callback=error_callback(kset, E=E))
-    assert success
-    tstop = time.time()
-    logger('cg.run took: ', tstop-tstart, ' seconds')
-    if final_callback is not None:
-        final_callback(kset, E=E)(X=X, fn=fn)
-    return X, fn, FE
-
-
 
 def run(ycfg, sirius_input, callback=None, final_callback=None, error_callback=None):
     """
