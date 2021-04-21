@@ -32,6 +32,10 @@ class SlopeError(Exception):
     """Slope error. Non-descent direction."""
 
 
+class CGRestart(Exception):
+    """Slope error. Non-descent direction."""
+
+
 def _solve(A, X):
     """
     returns A⁻¹ X
@@ -81,76 +85,23 @@ def grad_eta(Hij, ek, fn, T, kw, mo):
     return g_eta
 
 
-def btsearch(f, b, f0, maxiter=20, tau=0.5, error_callback=None):
+def btsearch(f, b, f0, maxiter=20, tau=0.5):
     """
     Backtracking search
     """
 
     x = b
 
-    error_callback(G_X=f.G_X, G_eta=f.G_eta, eta=f.eta, it=1000)
-
     for i in range(maxiter):
         fx = f(x)
         if x < 1e-8:
             raise StepError('backtracking search could not find a new minimum')
-        if fx[0] >= f0:
+        if fx[0] > f0:
             x *= tau
-            logger('btsearch::F %.10f, x=%.4e' % (fx[0], x))
+            logger('btsearch::F %.10f, F0=%.10f, x=%.3e' % (fx[0], f0, x))
         else:
             return x, fx
     raise StepError('backtracking search could not find a new minimum')
-
-
-def gss(f, a, b, tol=1e-3):
-    """
-    Golden section search.
-
-    Given a function f with a single local minimum in
-    the interval [a,b], gss returns a subset interval
-    [c,d] that contains the minimum with d-c <= tol.
-
-
-    """
-
-    (a, b) = (min(a, b), max(a, b))
-
-    h = b - a
-    if h <= tol:
-        return (a, b)
-
-    invphi = (np.sqrt(5) - 1) / 2  # 1/phi
-    invphi2 = (3 - np.sqrt(5)) / 2  # 1/phi^2
-    # required steps to achieve tolerance
-    n = int(np.ceil(np.log(tol / h) / np.log(invphi)))
-
-    c = a + invphi2 * h
-    d = a + invphi * h
-    yc = f(c)
-    yd = f(d)
-
-    for _ in range(n - 1):
-        if yc < yd:
-            b = d
-            d = c
-            yd = yc
-            h = invphi * h
-            c = a + invphi2 * h
-            yc = f(c)
-        else:
-            a = c
-            c = d
-            yc = yd
-            h = invphi * h
-            d = a + invphi * h
-            yd = f(d)
-
-    if yc < yd:
-        logger('gss: a=%.2g, d=%.2g' % (a, d))
-        return (a, d)
-    else:
-        logger('gss: c=%.2g, b=%.2g' % (c, b))
-        return (c, b)
 
 
 class F:
@@ -265,16 +216,12 @@ class CG:
         else:
             self.S = None
 
-    def step(self, X, f, eta, G_X, G_eta, xi_trial, F0, slope, kwargs):
+    def qline_search(self, fline, xi_trial, F0, slope):
         """
         Keyword Arguments:
-        X         --
-        f         -- occupation numbers (just for debugging, not needed)
-        eta       --
-        G_X       --
-        G_eta     --
-        xi_trial  --
-        F0        --
+        fline     -- line evaluator
+        xi_trial  -- trial point
+        F0        -- free energy at t=0
         slope     --
 
         Returns:
@@ -286,8 +233,6 @@ class CG:
         U    -- subspace rotation matrix
         """
 
-        # TODO: refactor
-        fline = F(X, eta, self.M, G_X, G_eta, self.S)
         while True:
             # free energy at trial point
             F1, _, _, _, _, _ = fline(xi_trial)
@@ -309,11 +254,6 @@ class CG:
             logger('Fpred:', Fpred, ' xi_min: ', xi_min)
             logger('F1: ', F1, ' a: ', a)
             logger('slope: ', slope)
-            # save_state({'X': X, 'f': f,
-            #             'eta': eta, 'G_X': G_X,
-            #             'F0': F0, 'F1': F1,
-            #             'a': a, 'b': b, 'c': c,
-            #             'G_eta': G_eta, 'slope': slope, **kwargs}, self.M.energy.kpointset)
         if not Fpred < F0:
             # reset Hamiltonian (side effects)
             fline(0)
@@ -328,11 +268,6 @@ class CG:
             logger('Fpred:', Fpred, ' xi_min: ', format(xi_min, '.4g'), 'xi_trial: ', format(xi_trial, '.4g'))
             logger('F1: ', F1, ' a: ', format(a, '.4g'))
             logger('slope: ', format(slope, '.5f'))
-            # save_state({'X': X, 'f': f,
-            #             'F0': F0, 'F1': F1,
-            #             'a': a, 'b': b, 'c': c,
-            #             'eta': eta, 'G_X': G_X,
-            #             'G_eta': G_eta, 'slope': slope, **kwargs}, self.M.energy.kpointset)
 
             # reset Hamiltonian (side effects)
             fline(0)
@@ -340,44 +275,22 @@ class CG:
 
         return X_n, f_n, ek, FE, Hx, U, xi_min
 
-    def step_golden_section_search(self, X, f, eta, Fline, F0):
-        """
-        Keyword Arguments:
-        X         --
-        eta       --
-        Fline     -- g(t) = free_energy(Z + t * grad_Z), Z = [X, eta]
-        xi_trial  --
-        F0        --
-        slope     --
-
-        Returns:
-        X_n  --
-        f_n  --
-        ek   --
-        F    -- free energy at minimum
-        U    -- subspace rotation matrix
-        """
-
-        t1, t2 = gss(Fline, a=0, b=0.5)
-        F, Hx, Xn, fn, ek, Ul = Fline((t1+t2)/2)
-        if not F < F0:
-            logger('WARNING: gss has failed')
-            logger('t1,t2 = %.5g, %.5g' % (t1, t2))
-            logger('F0: %.8f' % F0)
-            logger('F1: %.8f' % F)
-            if self._save:
-                save_state({'X': X, 'f': f,
-                            'eta': eta, 'G_X': Fline.G_X,
-                            'G_eta': Fline.G_eta}, Fline.M.energy.kpointset)
-
-            raise StepError('GSS didn\'t find a new minimum')
-        return Xn, fn, ek, F, Hx, Ul
-
-    def backtracking_search(self, X, f, eta, Fline, F0, tau=0.5, error_callback=None):
-        t1, res = btsearch(Fline, 5, F0, tau=tau, maxiter=8, error_callback=error_callback)
+    def backtracking_search(self, fline, F0, tau=0.5):
+        t1, res = btsearch(fline, 5, F0, tau=tau, maxiter=8)
         F1, Hx1, X1, f1, ek1, Ul1 = res
 
         return X1, f1, ek1, F1, Hx1, Ul1, t1
+
+    def line_search(self, fline, xi_trial, F0, slope, error_callback):
+        try:
+            return self.qline_search(fline, xi_trial, F0, slope)
+        except StepError:
+            # try backtracking search, if this fails too, do cg_restart
+            error_callback()
+            try:
+                return self.backtracking_search(fline, F0)
+            except StepError:
+                raise CGRestart
 
     def run(self, X, fn,
             maxiter=100,
@@ -411,8 +324,6 @@ class CG:
             # TODO cleanup signature of run and don't pass the preconditioner anymore
 
         kset = self.M.energy.kpointset
-        # occupation prec
-        kappa0 = kappa
 
         M = self.M
         T = self.M.T
@@ -463,40 +374,33 @@ class CG:
                 if cg_restart_inprogress:
                     raise SlopeError('Error: _ascent_ direction, slope %.4e' % slope)
                 cg_restart_inprogress = True
-                # TODO: tmin is not set, but used later
             else:
+                error_cb = lambda: error_callback(g_X=g_X, G_X=G_X, g_eta=g_eta,
+                                                  G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, prefix='nlcg_dump%04d_' % ii)
+
+                fline = F(X, eta, self.M, G_X, G_eta, overlap=self.S)
                 try:
-                    X, fn, ek, FE, Hx, U, tmin = self.step(X, fn, eta, G_X, G_eta,
-                                                           xi_trial=0.2, F0=FE, slope=slope,
-                                                           kwargs={'gx': g_X, 'g_eta': g_eta})
-                    # reset kappa
-                    kappa = kappa0
+                    X, fn, ek, FE, Hx, U, tmin = self.line_search(fline, xi_trial=0.2, F0=FE, slope=slope, error_callback=error_cb)
+                    # line-search successful, reset restart
                     cg_restart_inprogress = False
-                except StepError:
-                    # side effects
-                    try:
-                        error_callback(g_X=g_X, G_X=G_X, g_eta=g_eta, G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, prefix='nlcg_dump%04d_' % ii)
-                        Fline = F(X, eta, M, G_X, G_eta, self.S)
-                        logger('btsearch')
-                        X, fn, ek, FE, Hx, U, tmin = self.backtracking_search(X, fn, eta, Fline, FE, tau=tau,
-                                                                              error_callback=error_callback)
-                    except StepError:
-                        # backtracking search also failed
-                        # set kappa = 0 and retry, if cg restart already in progress -> abort
-                        error_callback(g_X=g_X, G_X=G_X, g_eta=g_eta, G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, prefix='nlcg_dump%04d_' % ii)
-                        if cg_restart_inprogress and kappa > 0:
-                            raise Exception('giving up, invalid search direction after restart')
-                        kappa = 0
-                        logger('kappa: ', kappa)
+                except CGRestart:
+                    # line-search failure = both quadratic and backtracking search have failed
+                    # attempt CG restart
+                    if cg_restart_inprogress:
+                        raise Exception('failed')
+                    cg_restart_inprogress = True
 
             callback(g_X=g_X, G_X=G_X, g_eta=g_eta, G_eta=G_eta, fn=fn, X=X, eta=eta, FE=FE, it=ii)
+
             logger('step %5d' % ii, 'F: %.11f res: X,eta %+10.5e, %+10.5e' %
                    (FE, np.real(inner(g_X, G_X)), np.real(inner(g_eta, G_eta))))
             logger('\t entropy: %.13f, ks-energy: %.13f' % (self.M.entropy, self.M.ks_energy))
+
             mag_str = sprint_magnetization(self.M.energy.kpointset, self.M.energy.density)
             logger(mag_str)
-            # logger('magnetization: %.5f %.5f %.5f, total: %.5f' % (mag[0], mag[1], mag[2], np.linalg.norm(mag)))
+
             eta = diag(ek)
+
             # keep previous search directions
             GP_X = G_X@U
             GP_eta = U.H@G_eta@U
