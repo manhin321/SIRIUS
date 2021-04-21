@@ -2,10 +2,18 @@ import yaml
 import argparse
 import time
 
-from sirius import save_state, Logger
+from sirius import save_state, Logger, load_state
 from sirius.ot import ApplyHamiltonian, Energy
+from sirius.coefficient_array import PwCoeffs
+import numpy as np
 
 logger = Logger()
+
+
+def make_pwcoeffs(coefficient_array):
+    out = PwCoeffs(dtype=np.complex, ctype=np.matrix)
+    out._data = coefficient_array._data
+    return out
 
 def validate_config(dd):
     """
@@ -23,10 +31,12 @@ def validate_config(dd):
     marzari = {Required('type'): Any('Marzari'),
                Optional('inner', default=2): int,
                Optional('fd_slope_check', default=False): bool}
-    neugebaur = {Required('type'): Any('Neugebaur', 'Neugebaur_us'), Optional('kappa', default=0.3): Coerce(float)}
+    neugebaur = {Required('type'): Any('Neugebaur'), Optional('kappa', default=0.3): Coerce(float)}
+    restart = {Required('fname'): str}
 
     cg = {Required('method'): Any(marzari, neugebaur),
-          Optional('type', default='FR'): Any('FR', 'PR'),
+          Optional('restart'): Any(restart),
+          Optional('type', default='FR'): Any('FR', 'PR', 'SD'),
           Optional('tol', default=1e-9): float,
           Optional('maxiter', default=300): int,
           Optional('restart', default=20): int,
@@ -102,6 +112,13 @@ def run_marzari(config, sirius_config, callback=None, final_callback=None):
 
     X, fn, E, ctx, kset = initial_state(sirius_config, cg_config['nscf'])
 
+    # load state
+    if 'restart' in config:
+        logger('restart loading from ' + config['restart']['fname'])
+        fname = config['restart']['fname']
+        X = make_pwcoeffs(load_state(fname, kset, "X", np.complex))
+        fn = load_state(fname, kset, "fn", np.float).asarray().flatten()
+
     T = config['System']['T']
     smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
     M = FreeEnergy(E=E, T=T, smearing=smearing)
@@ -134,6 +151,13 @@ def run_neugebaur(config, sirius_config, callback, final_callback, error_callbac
 
     cg_config = config['CG']
     X, fn, E, ctx, kset = initial_state(sirius_config, cg_config['nscf'])
+    # load state
+    if 'restart' in config:
+        logger('restart loading from ' + config['restart']['fname'])
+        fname = config['restart']['fname']
+        X = make_pwcoeffs(load_state(fname, kset, "X", np.complex))
+        fn = load_state(fname, kset, "fn", np.float).asarray().flatten()
+
     T = config['System']['T']
     smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
     M = FreeEnergy(E=E, T=T, smearing=smearing)
@@ -152,9 +176,9 @@ def run_neugebaur(config, sirius_config, callback, final_callback, error_callbac
                                 callback=callback(kset, E=E),
                                 error_callback=error_callback(kset, E=E))
     if not success:
-        print('NOT converged.')
+        logger('NOT converged.')
     else:
-        print('SUCCESSFULLY converged')
+        logger('SUCCESSFULLY converged')
     tstop = time.time()
     logger('cg.run took: ', tstop-tstart, ' seconds')
     if final_callback is not None:

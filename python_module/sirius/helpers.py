@@ -238,7 +238,7 @@ def kpoint_index(kp, ctx):
     ik = np.array(kp.vk) * ngridk - shiftk/2
     if not np.isclose(ik-ik.astype(np.int), 0).all():
         # single k-point given in vk
-        print('WARNING: could not identify k-point index')
+        # TODO: give proper coordinates
         ik = [0, 0, 0]
     else:
         ik = ik.astype(np.int)
