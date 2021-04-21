@@ -96,9 +96,9 @@ def btsearch(f, b, f0, maxiter=20, tau=0.5):
         fx = f(x)
         if x < 1e-8:
             raise StepError('backtracking search could not find a new minimum')
+        logger('btsearch::F %.10f, F0=%.10f, x=%.3e' % (fx[0], f0, x))
         if fx[0] > f0:
             x *= tau
-            logger('btsearch::F %.10f, F0=%.10f, x=%.3e' % (fx[0], f0, x))
         else:
             return x, fx
     raise StepError('backtracking search could not find a new minimum')
@@ -267,7 +267,7 @@ class CG:
             logger('F0:', F0)
             logger('Fpred:', Fpred, ' xi_min: ', format(xi_min, '.4g'), 'xi_trial: ', format(xi_trial, '.4g'))
             logger('F1: ', F1, ' a: ', format(a, '.4g'))
-            logger('slope: ', format(slope, '.5f'))
+            logger('slope: ', format(slope, '.5g'))
 
             # reset Hamiltonian (side effects)
             fline(0)
