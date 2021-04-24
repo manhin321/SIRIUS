@@ -4,7 +4,7 @@ import time
 
 from sirius import save_state, Logger, load_state
 from sirius.ot import ApplyHamiltonian, Energy
-from sirius.coefficient_array import PwCoeffs
+from sirius.coefficient_array import PwCoeffs, diag
 import numpy as np
 
 logger = Logger()
@@ -109,19 +109,24 @@ def run_marzari(config, sirius_config, callback=None, final_callback=None):
     from sirius.edft import MarzariCG as CG, FreeEnergy
 
     cg_config = config['CG']
+    if 'restart' in config:
+        nscf = 1
+    else:
+        nscf = cg_config['nscf']
 
-    X, fn, E, ctx, kset = initial_state(sirius_config, cg_config['nscf'])
+    X, fn, E, ctx, kset = initial_state(sirius_config, nscf)
+    T = config['System']['T']
+    smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
+    M = FreeEnergy(E=E, T=T, smearing=smearing)
 
     # load state
     if 'restart' in config:
         logger('restart loading from ' + config['restart']['fname'])
         fname = config['restart']['fname']
         X = make_pwcoeffs(load_state(fname, kset, "X", np.complex))
-        fn = load_state(fname, kset, "fn", np.float).asarray().flatten()
+        fn = load_state(fname, kset, "fn", np.float64).asarray().flatten()
+        M(X, fn) # make sure band energies are set
 
-    T = config['System']['T']
-    smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
-    M = FreeEnergy(E=E, T=T, smearing=smearing)
     method_config = config['CG']['method']
     cg = CG(M, fd_slope_check=method_config['fd_slope_check'])
     K = make_precond(cg_config, kset)
@@ -150,22 +155,31 @@ def run_neugebaur(config, sirius_config, callback, final_callback, error_callbac
     from sirius.edft import NeugebaurCG as CG, FreeEnergy
 
     cg_config = config['CG']
-    X, fn, E, ctx, kset = initial_state(sirius_config, cg_config['nscf'])
-    # load state
+    if 'restart' in config:
+        nscf = 1
+    else:
+        nscf = cg_config['nscf']
+
+    X, fn, E, ctx, kset = initial_state(sirius_config, nscf)
+    T = config['System']['T']
+    smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
+    M = FreeEnergy(E=E, T=T, smearing=smearing)
+
+    # load state, Neugebauer method requires X, eta (pseudo band-energies)
     if 'restart' in config:
         logger('restart loading from ' + config['restart']['fname'])
         fname = config['restart']['fname']
         X = make_pwcoeffs(load_state(fname, kset, "X", np.complex))
-        fn = load_state(fname, kset, "fn", np.float).asarray().flatten()
+        # the diagoal of eta is stored in dumps, therefore it is real-valued
+        ek = diag(load_state(fname, kset, "eta", np.float64)).asarray().flatten()
+    else:
+        ek = kset.e
 
-    T = config['System']['T']
-    smearing = make_smearing(config['System']['smearing'], T, ctx, kset)
-    M = FreeEnergy(E=E, T=T, smearing=smearing)
     cg = CG(M)
     K = make_precond(cg_config, kset)
 
     tstart = time.time()
-    X, fn, FE, success = cg.run(X, fn,
+    X, fn, FE, success = cg.run(X, ek,
                                 tol=cg_config['tol'],
                                 K=K,
                                 maxiter=cg_config['maxiter'],

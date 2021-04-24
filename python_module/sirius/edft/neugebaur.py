@@ -92,6 +92,11 @@ def btsearch(f, b, f0, maxiter=20, tau=0.5):
 
     x = b
 
+    # TODO DEBUG
+    fref=f(0)
+    if np.abs(fref[0]-f0) > 1e-13:
+        logger('btsearch f(0) != f0, f(0): %.13f, f0: %.13f' % (fref[0], f0))
+
     for i in range(maxiter):
         fx = f(x)
         if x < 1e-8:
@@ -261,12 +266,12 @@ class CG:
 
         # free energy at minimum
         FE, Hx, X_n, f_n, ek, U = fline(xi_min)
-        logger('qline prediction error, FE-Fpred: %.10e, step-length %.4e' % (FE-Fpred, xi_min))
+        logger('qline prediction error, FE-Fpred: %.4e, step-length %.3e' % (FE-Fpred, xi_min))
         if not FE < F0:
             logger('==== failed step ====')
             logger('F0:', F0)
             logger('Fpred:', Fpred, ' xi_min: ', format(xi_min, '.4g'), 'xi_trial: ', format(xi_trial, '.4g'))
-            logger('F1: ', F1, ' a: ', format(a, '.4g'))
+            logger('F1: ', F1, ' a: ', format(a, '.13f'))
             logger('slope: ', format(slope, '.5g'))
 
             # reset Hamiltonian (side effects)
@@ -292,7 +297,7 @@ class CG:
             except StepError:
                 raise CGRestart
 
-    def run(self, X, fn,
+    def run(self, X, ek,
             maxiter=100,
             restart=20,
             tol=1e-10,
@@ -329,15 +334,15 @@ class CG:
         T = self.M.T
         kw = kset.w
         m = kset.ctx().max_occupancy()
-        # set occupation numbers from band energies
-        fn = kset.fn
-        eta = diag(kset.e)
+        eta = diag(ek)
         w, U = eta.eigh()
         ek = w
         X = X@U
+        # set occupation numbers from band energies
+        fn, _ = self.M.smearing.fn(ek)
         # compute initial free energy
         FE, Hx = M(X, fn)
-        logger('initial F: %.10g' % FE)
+        logger('initial F: %.13f' % FE)
 
         HX = Hx * kw
         Hij = X.H @ HX
