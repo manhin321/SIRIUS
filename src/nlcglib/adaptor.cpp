@@ -348,12 +348,13 @@ void Energy::print_info() const
     auto& ctx = kset.ctx();
     auto& unit_cell = kset.unit_cell();
 
+
     auto result_mag = density.get_magnetisation();
     // auto total_mag  = std::get<0>(result_mag);
     // auto it_mag     = std::get<1>(result_mag);
     auto mt_mag     = std::get<2>(result_mag);
 
-    if (ctx.num_mag_dims()) {
+    if (ctx.num_mag_dims() && ctx.comm().rank() == 0) {
         std::printf("atom              moment                |moment|");
         std::printf("\n");
         for (int i = 0; i < 80; i++) {
